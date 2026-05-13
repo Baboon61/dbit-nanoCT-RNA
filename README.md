@@ -1,1 +1,1 @@
-# DBiT-spatial-nanoCT-RNA
+# dbit-nanoCT-RNA
