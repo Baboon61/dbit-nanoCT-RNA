@@ -1,0 +1,16 @@
+name: dbit-spatial-nanoct-rna-samtools
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.11
+  - bedtools
+  - biopython
+  - cxx-compiler
+  - htslib
+  - pkg-config
+  - pysam
+  - rust
+  - samtools
+

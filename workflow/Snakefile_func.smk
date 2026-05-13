@@ -7,13 +7,13 @@ def get_fastq_info_from_folder(fastq_folder,sample):
 def parse_fastq(path):
     import os
     import re
-    result = {}
+    pattern = re.compile(
+        r'^(?P<id>.+)_(?P<number>S[0-9]+)_(?P<lane>L[0-9]+)_(?P<read>[RI][0-9]+)_(?P<suffix>[0-9]+)\.(?P<fastq>fastq|fq)\.(?P<compress>gz)$'
+    )
     fastq = os.path.basename(path)
-    result['number'] = re.findall('_S[0-9]+_', fastq)[0].strip("_")
-    result['lane']   = re.findall('_L[0-9]+_', fastq)[0].strip("_")
-    result['read']   = re.findall('_[RI][0-9]+_', fastq)[0].strip("_")
-    result['id']     = re.split('_S[0-9]+_',fastq)[0].strip("_")
-    result['suffix']  = re.split("\.", re.split('_[RI][0-9]+_',fastq)[1].strip("_"))[0]
-    result['fastq']  = re.split('\.',fastq)[1]
-    result['compress']  = re.split('\.',fastq)[2]
-    return(result)
+    match = pattern.match(fastq)
+    if not match:
+        raise ValueError(
+            "Wrong input file name '{}'. Expected 10X-style '*_S1_L001_R1_001.fastq.gz' or '.fq.gz'.".format(fastq)
+        )
+    return match.groupdict()

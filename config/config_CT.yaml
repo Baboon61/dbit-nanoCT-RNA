@@ -34,4 +34,5 @@ general:
   spatial_barcode1_length: 8                                                                                                 # Modify the length of the spatial barcode1
   spatial_barcode2_length: 8                                                                                                 # Modify the length of the spatial barcode2
   nanoCutTag_barcode_length: 8                                                                                               # Modify the length of the nano CutTag barcode
-  hamming_distance_linkers: 3                                                                                                # Modify the hamming distance for linkers QC check
+  hamming_distance_linkers: 3  
+  bin_sizes: 5000                                                                                             # Modify the hamming distance for linkers QC check

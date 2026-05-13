@@ -1,0 +1,9 @@
+name: dbit-spatial-nanoct-rna-bbduk
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - bbmap
+  - pigz
+

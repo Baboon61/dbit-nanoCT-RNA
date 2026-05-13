@@ -1,0 +1,15 @@
+name: dbit-spatial-nanoct-rna-debarcode
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.11
+  - biopython
+  - matplotlib
+  - numpy
+  - pysam
+  - python-levenshtein
+  - pyyaml
+  - regex
+

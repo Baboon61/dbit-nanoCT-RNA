@@ -71,7 +71,7 @@ rule filter_primer:
     PCRprimer_sequence = config['general']['PCRprimer_sequence'],
     out_dir = proc_dir
   threads: config['general']['core']
-  conda: 'envs/spatialCutTagRNA_demultiplex.yaml'
+  conda: '../envs/dbit-spatial-nanoct-rna-bbduk.yaml'
   shell:
     '''
     bbduk.sh \
@@ -130,7 +130,7 @@ rule filter_L1:
     linker1_sequence = config['general']['linker1_sequence'],
     out_dir = proc_dir
   threads: config['general']['core']
-  conda: 'envs/spatialCutTagRNA_demultiplex.yaml'
+  conda: '../envs/dbit-spatial-nanoct-rna-bbduk.yaml'
   shell:
     '''
     bbduk.sh \
@@ -189,7 +189,7 @@ rule filter_L2:
     linker2_sequence = config['general']['linker2_sequence'],
     out_dir = proc_dir
   threads: config['general']['core']
-  conda: 'envs/spatialCutTagRNA_demultiplex.yaml'
+  conda: '../envs/dbit-spatial-nanoct-rna-bbduk.yaml'
   shell:
     '''
     bbduk.sh \
@@ -238,7 +238,7 @@ rule bc_process:
     spatial_barcode1_length = config['general']['spatial_barcode1_length'],
     spatial_barcode2_length = config['general']['spatial_barcode2_length'],
     umi_barcode_length = config['general']['umi_barcode_length']
-  conda: 'envs/spatialCutTagRNA_BC_process.yaml'
+  conda: '../envs/dbit-spatial-nanoct-rna-bcprocess.yaml'
   shell:
     '''
     python3 {input.script} \

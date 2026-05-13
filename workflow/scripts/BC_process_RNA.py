@@ -35,7 +35,7 @@ bc2_start=primer_length+1
 bc2_end=bc2_start+spatial_barcode2_length-1
 
 bc1_start=bc2_end+linker2_length+1
-bc1_end=bc1_start+spatial_barcode2_length-1
+bc1_end=bc1_start+spatial_barcode1_length-1
 
 bc_umi_start=bc1_end+linker1_length+1
 bc_umi_end=bc_umi_start+umi_barcode_length-1
