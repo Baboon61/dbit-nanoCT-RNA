@@ -1,0 +1,682 @@
+from logging import config
+
+include: 'Snakefile_prep_CT.smk'
+
+#General rule
+rule all:
+  input:
+    filterPCR=[
+      proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_R1_{suffix}_raw_qc_primer.{fastq}.{compress}'.format( \
+      sample=res['id'], number=res['number'], lane=res['lane'], suffix=res['suffix'], fastq=res['fastq'], compress=res['compress']) \
+      for sample_id in samples_list for res in get_fastq_info_from_folder(raw_dir, sample_id)
+    ],
+    filterL1=[
+      proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_R1_{suffix}_raw_qc_linker1.{fastq}.{compress}'.format( \
+      sample=res['id'], number=res['number'], lane=res['lane'], suffix=res['suffix'], fastq=res['fastq'], compress=res['compress']) \
+      for sample_id in samples_list for res in get_fastq_info_from_folder(raw_dir, sample_id)
+    ],
+    filterL2=[
+      proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_R1_{suffix}_raw_qc_linker2.{fastq}.{compress}'.format( \
+      sample=res['id'], number=res['number'], lane=res['lane'], suffix=res['suffix'], fastq=res['fastq'], compress=res['compress']) \
+      for sample_id in samples_list for res in get_fastq_info_from_folder(raw_dir, sample_id)
+    ],
+    bc_process=[
+      proc_dir + '{sample}/tmp_data/{sample}_{number}_{lane}_R2_{suffix}.{fastq}.{compress}'.format( \
+      sample=res['id'], number=res['number'], lane=res['lane'], suffix=res['suffix'], fastq=res['fastq'], compress=res['compress']) \
+      for sample_id in samples_list for res in get_fastq_info_from_folder(raw_dir, sample_id)
+    ],
+    seq_file_rename=[
+      proc_dir + '{sample}/tmp_data/{sample}_{number}_{lane}_R3_{suffix}.{fastq}.{compress}'.format( \
+      sample=sample_id, number=res['number'], lane=res['lane'], suffix=res['suffix'], fastq=res['fastq'], compress=res['compress']) \
+      for sample_id in samples_list for res in get_fastq_info_from_folder(raw_dir, sample_id)
+    ],
+    debarcode=[
+      proc_dir + '{sample}/{modality}_{barcode}/fastq/barcode_{barcode}/{sample}_{number}_{lane}_R1_{suffix}.{fastq}.{compress}'.format( \
+      modality=modality,barcode=barcodes_dict[res['id']][modality], sample=res['id'], number=res['number'], lane=res['lane'], suffix=res['suffix'], fastq=res['fastq'], compress=res['compress']) \
+      for sample_id in samples_list for modality in barcodes_dict[sample_id].keys() for res in get_fastq_info_from_folder(raw_dir, sample_id)
+    ],
+    get_barcodes_cellranger=[
+      proc_dir + 'get_barcodes_cellranger.done'
+    ],
+    run_cellranger=[
+      proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_bam.bam'.format( \
+      modality=modality,barcode=barcodes_dict[res['id']][modality], sample=res['id']) \
+      for sample_id in samples_list for modality in barcodes_dict[sample_id].keys() for res in get_fastq_info_from_folder(raw_dir, sample_id)
+    ],
+    bigwig_all=[
+      proc_dir + '{sample}/{modality}_{barcode}/bigwig/all_reads.bw'.format( \
+      modality=modality,barcode=barcodes_dict[res['id']][modality], sample=res['id']) \
+      for sample_id in samples_list for modality in barcodes_dict[sample_id].keys() for res in get_fastq_info_from_folder(raw_dir, sample_id)
+    ],
+    macs_broad=[
+      proc_dir + '{sample}/{modality}_{barcode}/peaks/macs_broad/{modality}_peaks.broadPeak'.format( \
+      modality=modality,barcode=barcodes_dict[res['id']][modality], sample=res['id']) \
+      for sample_id in samples_list for modality in barcodes_dict[sample_id].keys() for res in get_fastq_info_from_folder(raw_dir, sample_id)
+    ],
+    barcodes_sum=[
+      proc_dir + '{sample}/{modality}_{barcode}/barcode_metrics/all_barcodes.txt'.format( \
+      modality=modality,barcode=barcodes_dict[res['id']][modality], sample=res['id']) \
+      for sample_id in samples_list for modality in barcodes_dict[sample_id].keys() for res in get_fastq_info_from_folder(raw_dir, sample_id)
+    ],
+    noLA_bam=[
+      proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/fragments_noLA_duplicates.tsv.gz'.format( \
+      modality=modality,barcode=barcodes_dict[res['id']][modality], sample=res['id']) \
+      for sample_id in samples_list for modality in barcodes_dict[sample_id].keys() for res in get_fastq_info_from_folder(raw_dir, sample_id)
+    ],
+    cellranger_cleanup = [
+      proc_dir + '{sample}/{modality}_{barcode}/_clean_cellranger.out'.format( \
+      modality=modality,barcode=barcodes_dict[res['id']][modality], sample=res['id']) \
+      for sample_id in samples_list for modality in barcodes_dict[sample_id].keys() for res in get_fastq_info_from_folder(raw_dir, sample_id)
+    ],
+    matrix_peaks = [
+      proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_peaks/'.format( \
+      modality=modality,barcode=barcodes_dict[res['id']][modality], sample=res['id']) \
+      for sample_id in samples_list for modality in barcodes_dict[sample_id].keys() for res in get_fastq_info_from_folder(raw_dir, sample_id)
+    ],
+    matrix_bins = [
+      proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_bin_{binsize}/'.format( \
+      modality=modality,barcode=barcodes_dict[res['id']][modality], sample=res['id'], binsize=binsize) \
+      for sample_id in samples_list for modality in barcodes_dict[sample_id].keys() for res in get_fastq_info_from_folder(raw_dir, sample_id) for binsize in config['general']['bin_sizes']
+    ],
+    matrix_genes = [
+      proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_genes/'.format( \
+      modality=modality,barcode=barcodes_dict[res['id']][modality], sample=res['id']) \
+      for sample_id in samples_list for modality in barcodes_dict[sample_id].keys() for res in get_fastq_info_from_folder(raw_dir, sample_id)
+    ],
+
+#Filter out read without PCR primer, high hamming distance
+rule filter_primer:
+  input:
+    in1 = lambda wildcards: glob.glob(raw_dir+'{sample}/**/{sample}_{number}_{lane}_R1_{suffix}.{fastq}.{compress}' \
+      .format( \
+        sample=wildcards.sample,
+        number=wildcards.number,
+        lane=wildcards.lane,
+        suffix=wildcards.suffix,
+        fastq=wildcards.fastq,
+        compress=wildcards.compress
+      ),recursive=True),
+    in2 = lambda wildcards: glob.glob(raw_dir+'{sample}/**/{sample}_{number}_{lane}_R2_{suffix}.{fastq}.{compress}' \
+      .format( \
+        sample=wildcards.sample,
+        number=wildcards.number,
+        lane=wildcards.lane,
+        suffix=wildcards.suffix,
+        fastq=wildcards.fastq,
+        compress=wildcards.compress
+      ),recursive=True)
+  output:
+    out1 = proc_dir+'{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_R1_{suffix}_raw_qc_primer.{fastq}.{compress}',
+    out2 = proc_dir+'{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_R2_{suffix}_raw_qc_primer.{fastq}.{compress}',
+    outfile = touch(proc_dir+'{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_{suffix}.{fastq}.{compress}_filter_primer.done')
+  params:
+    k_length = len(config['general']['PCRprimer_sequence']),
+    k_length_restrict = len(config['general']['PCRprimer_sequence'])+8,
+    barcode_r1 = barcode_r1,
+    barcode_r2 = barcode_r2,
+    hamming_distance = config['general']['hamming_distance_linkers'],
+    PCRprimer_sequence = config['general']['PCRprimer_sequence'],
+    out_dir = proc_dir
+  threads: config['general']['core']
+  conda: '../envs/dbit-spatial-nanoct-rna-bbduk.yaml'
+  shell:
+    '''
+    bbduk.sh \
+    in1={input.in1} \
+    in2={input.in2} \
+    outm1={output.out1} \
+    outm2={output.out2} \
+    k={params.k_length} mm=f rcomp=f restrictleft={params.k_length_restrict} \
+    skipr1={params.barcode_r1} skipr2={params.barcode_r2} \
+    hdist={params.hamming_distance} \
+    stats={params.out_dir}{wildcards.sample}/tmp_data/qc_raw_data/{wildcards.sample}_{wildcards.lane}_stats.primer.txt \
+    threads={threads} \
+    literal={params.PCRprimer_sequence}
+    '''
+
+#Filter out read without linker 1
+rule filter_L1:
+  input:
+    in1 = lambda wildcards: proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_R1_{suffix}_raw_qc_primer.{fastq}.{compress}' \
+      .format( \
+        sample=wildcards.sample,
+        number=wildcards.number,
+        lane=wildcards.lane,
+        suffix=wildcards.suffix,
+        fastq=wildcards.fastq,
+        compress=wildcards.compress
+      ),
+    in2 = lambda wildcards: proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_R2_{suffix}_raw_qc_primer.{fastq}.{compress}' \
+      .format( \
+        sample=wildcards.sample,
+        number=wildcards.number,
+        lane=wildcards.lane,
+        suffix=wildcards.suffix,
+        fastq=wildcards.fastq,
+        compress=wildcards.compress
+      ),
+    infile = lambda wildcards: proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_{suffix}.{fastq}.{compress}_filter_primer.done' \
+      .format( \
+        sample=wildcards.sample,
+        number=wildcards.number,
+        lane=wildcards.lane,
+        suffix=wildcards.suffix,
+        fastq=wildcards.fastq,
+        compress=wildcards.compress
+      )
+  output:
+    out1 = proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_R1_{suffix}_raw_qc_linker1.{fastq}.{compress}',
+    out2 = proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_R2_{suffix}_raw_qc_linker1.{fastq}.{compress}',
+    outfile = touch(proc_dir+'{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_{suffix}.{fastq}.{compress}_filter_L1.done')
+  params:
+    k_length = len(config['general']['linker1_sequence']),
+    k_length_restrict = len(config['general']['linker1_sequence'])+80,
+    barcode_r1 = barcode_r1,
+    barcode_r2 = barcode_r2,
+    hamming_distance = config['general']['hamming_distance_linkers'],
+    linker1_sequence = config['general']['linker1_sequence'],
+    out_dir = proc_dir
+  threads: config['general']['core']
+  conda: '../envs/dbit-spatial-nanoct-rna-bbduk.yaml'
+  shell:
+    '''
+    bbduk.sh \
+    in1={input.in1} \
+    in2={input.in2} \
+    outm1={output.out1} \
+    outm2={output.out2} \
+    k={params.k_length} mm=f rcomp=f restrictleft={params.k_length_restrict} \
+    skipr1={params.barcode_r1} skipr2={params.barcode_r2} \
+    hdist={params.hamming_distance} \
+    stats={params.out_dir}/{wildcards.sample}/tmp_data/qc_raw_data/{wildcards.sample}_{wildcards.lane}_stats.linker1.txt \
+    threads={threads} \
+    literal={params.linker1_sequence}
+    '''
+
+#Filter out read without linker 2
+rule filter_L2:
+  input:
+    in1 = lambda wildcards: proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_R1_{suffix}_raw_qc_linker1.{fastq}.{compress}' \
+      .format( \
+        sample=wildcards.sample,
+        number=wildcards.number,
+        lane=wildcards.lane,
+        suffix=wildcards.suffix,
+        fastq=wildcards.fastq,
+        compress=wildcards.compress
+      ),
+    in2 = lambda wildcards: proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_R2_{suffix}_raw_qc_linker1.{fastq}.{compress}' \
+      .format( \
+        sample=wildcards.sample,
+        number=wildcards.number,
+        lane=wildcards.lane,
+        suffix=wildcards.suffix,
+        fastq=wildcards.fastq,
+        compress=wildcards.compress
+      ),
+    infile = lambda wildcards: proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_{suffix}.{fastq}.{compress}_filter_L1.done' \
+      .format( \
+        sample=wildcards.sample,
+        number=wildcards.number,
+        lane=wildcards.lane,
+        suffix=wildcards.suffix,
+        fastq=wildcards.fastq,
+        compress=wildcards.compress
+      )
+  output:
+    out1 = proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_R1_{suffix}_raw_qc_linker2.{fastq}.{compress}',
+    out2 = proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_R2_{suffix}_raw_qc_linker2.{fastq}.{compress}',
+    outfile = touch(proc_dir+'{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_{suffix}.{fastq}.{compress}_filter_L2.done')
+  params:
+    k_length = len(config['general']['linker2_sequence']),
+    k_length_restrict = len(config['general']['linker2_sequence'])+40,
+    barcode_r1 = barcode_r1,
+    barcode_r2 = barcode_r2,
+    hamming_distance = config['general']['hamming_distance_linkers'],
+    linker2_sequence = config['general']['linker2_sequence'],
+    out_dir = proc_dir
+  threads: config['general']['core']
+  conda: '../envs/dbit-spatial-nanoct-rna-bbduk.yaml'
+  shell:
+    '''
+    bbduk.sh \
+    in1={input.in1} \
+    in2={input.in2} \
+    outm1={output.out1} \
+    outm2={output.out2} \
+    k={params.k_length} mm=f rcomp=f restrictleft={params.k_length_restrict} \
+    skipr1={params.barcode_r1} skipr2={params.barcode_r2} \
+    hdist={params.hamming_distance} \
+    stats={params.out_dir}/{wildcards.sample}/tmp_data/qc_raw_data/{wildcards.sample}_{wildcards.lane}_stats.linker2.txt \
+    threads={threads} \
+    literal={params.linker2_sequence}
+    '''
+
+#Create a new R2 with spatial barcode and modality barcodes
+rule bc_process:
+  input:
+    script = workflow.basedir + '/scripts/BC_process_CT.py',
+    in1 = lambda wildcards: proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_{Rfile_barcode}_{suffix}_raw_qc_linker2.{fastq}.{compress}' \
+      .format( \
+        sample=wildcards.sample,
+        number=wildcards.number,
+        lane=wildcards.lane,
+        suffix=wildcards.suffix,
+        fastq=wildcards.fastq,
+        compress=wildcards.compress,
+        Rfile_barcode=Rfile_barcode
+      ),
+    infile = lambda wildcards: proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_{suffix}.{fastq}.{compress}_filter_L2.done' \
+      .format( \
+        sample=wildcards.sample,
+        number=wildcards.number,
+        lane=wildcards.lane,
+        suffix=wildcards.suffix,
+        fastq=wildcards.fastq,
+        compress=wildcards.compress
+      )
+  output:
+    out1 = proc_dir + '{sample}/tmp_data/{sample}_{number}_{lane}_R1_{suffix}.{fastq}.{compress}',
+    out2 = proc_dir + '{sample}/tmp_data/{sample}_{number}_{lane}_R2_{suffix}.{fastq}.{compress}',
+    outfile = touch(proc_dir+'{sample}/tmp_data/{sample}_{number}_{lane}_{suffix}.{fastq}.{compress}_bc_process.done')
+  params:
+    primer_length = len(config['general']['PCRprimer_sequence']),
+    linker1_length = len(config['general']['linker1_sequence']),
+    linker2_length = len(config['general']['linker2_sequence']),
+    adapt_Tn5_length = len(config['general']['adapt_Tn5']),
+    spatial_barcode1_length = config['general']['spatial_barcode1_length'],
+    spatial_barcode2_length = config['general']['spatial_barcode2_length'],
+    nanoCutTag_barcode_length = config['general']['nanoCutTag_barcode_length']
+  conda: '../envs/dbit-spatial-nanoct-rna-bcprocess.yaml'
+  shell:
+    '''
+    python3 {input.script} \
+    --input {input.in1} \
+    --output_R1 {output.out1} \
+    --output_R2 {output.out2} \
+    --primer_length {params.primer_length} \
+    --linker1_length {params.linker1_length} \
+    --linker2_length {params.linker2_length} \
+    --adapt_tn5_length {params.adapt_Tn5_length} \
+    --spatial_barcode1_length {params.spatial_barcode1_length} \
+    --spatial_barcode2_length {params.spatial_barcode2_length} \
+    --nanoCT_barcode_length {params.nanoCutTag_barcode_length} \
+    2>&1
+    '''
+
+#Rename the sequence file to R3
+rule seq_file_rename:
+  input:
+    in1 = lambda wildcards: proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_{Rfile_sequence}_{suffix}_raw_qc_linker2.{fastq}.{compress}' \
+      .format( \
+        sample=wildcards.sample,
+        number=wildcards.number,
+        lane=wildcards.lane,
+        suffix=wildcards.suffix,
+        fastq=wildcards.fastq,
+        compress=wildcards.compress,
+        Rfile_sequence=Rfile_sequence
+      ),
+    infile = lambda wildcards: proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_{suffix}.{fastq}.{compress}_filter_L2.done' \
+      .format( \
+        sample=wildcards.sample,
+        number=wildcards.number,
+        lane=wildcards.lane,
+        suffix=wildcards.suffix,
+        fastq=wildcards.fastq,
+        compress=wildcards.compress
+      )
+  output:
+    out1 = proc_dir + '{sample}/tmp_data/{sample}_{number}_{lane}_R3_{suffix}.{fastq}.{compress}',
+    outfile = touch(proc_dir+'{sample}/tmp_data/{sample}_{number}_{lane}_{suffix}.{fastq}.{compress}_seq_file_rename.done')
+  shell:
+    '''
+    cp {input.in1} {output.out1}
+    '''
+
+#Debarcode the modality barcodes
+rule debarcode:
+  input:
+    script = workflow.basedir + '/scripts/debarcode.py',
+    fastq = lambda wildcards: glob.glob(proc_dir + '{sample}/tmp_data/{sample}_{number}_{lane}_R[123]_{suffix}.{fastq}.{compress}' \
+      .format( \
+        sample=wildcards.sample,
+        number=wildcards.number,
+        lane=wildcards.lane,
+        suffix=wildcards.suffix,
+        fastq=wildcards.fastq,
+        compress=wildcards.compress
+      ),recursive=True),
+    infile1 = lambda wildcards: proc_dir + '{sample}/tmp_data/{sample}_{number}_{lane}_{suffix}.{fastq}.{compress}_bc_process.done' \
+      .format( \
+        sample=wildcards.sample,
+        number=wildcards.number,
+        lane=wildcards.lane,
+        suffix=wildcards.suffix,
+        fastq=wildcards.fastq,
+        compress=wildcards.compress
+      ),
+    infile2 = lambda wildcards: proc_dir + '{sample}/tmp_data/{sample}_{number}_{lane}_{suffix}.{fastq}.{compress}_seq_file_rename.done' \
+      .format( \
+        sample=wildcards.sample,
+        number=wildcards.number,
+        lane=wildcards.lane,
+        suffix=wildcards.suffix,
+        fastq=wildcards.fastq,
+        compress=wildcards.compress
+      )
+  output:
+    proc_dir + '{sample}/{modality}_{barcode}/fastq/barcode_{barcode}/{sample}_{number}_{lane}_R1_{suffix}.{fastq}.{compress}',
+    proc_dir + '{sample}/{modality}_{barcode}/fastq/barcode_{barcode}/{sample}_{number}_{lane}_R2_{suffix}.{fastq}.{compress}',
+    proc_dir + '{sample}/{modality}_{barcode}/fastq/barcode_{barcode}/{sample}_{number}_{lane}_R3_{suffix}.{fastq}.{compress}',
+    outfile = touch(proc_dir+'{sample}/{modality}_{barcode}/fastq/{modality}_{barcode}_{sample}_{number}_{lane}_{suffix}.{fastq}.{compress}_debarcode.done')
+  params:
+    nbarcodes = len(antibodies_list),
+    out_folder = lambda wildcards: proc_dir + '{sample}/{modality}_{barcode}/fastq/' \
+      .format( \
+        sample=wildcards.sample,
+        modality=wildcards.modality,
+        barcode=wildcards.barcode),
+    patternTn5 = config['general']['adapt_Tn5']
+  conda: '../envs/dbit-spatial-nanoct-rna-debarcode.yaml'
+  shell:
+    '''
+    python3 {input.script} \
+    --input {input.fastq} \
+    --out_prefix {params.out_folder} \
+    --pattern {params.patternTn5} \
+    --single_cell \
+    --norevcompl \
+    --barcode {wildcards.barcode} \
+    --name {wildcards.sample} \
+    2>&1
+    '''
+
+#Replace the cellranger barcodes list
+rule get_barcodes_cellranger:
+  input:
+    spatial_barcodes = config['general']['spatial_barcodes_file'],
+  output:
+    cellranger_barcodes_file = config['general']['cellranger']['barcodes_path'] + config['general']['cellranger']['barcodes_file'],
+    outfile = touch(proc_dir+'get_barcodes_cellranger.done')
+  shell:
+    'awk "{{OFS="\\t"}};{{print \$1}}" {input.spatial_barcodes} | gzip -cvf - > {output.cellranger_barcodes_file};'
+
+#Run cellranger
+rule run_cellranger:
+  input:
+    in1 = lambda wildcards: [proc_dir + '{sample}/{modality}_{barcode}/fastq/barcode_{barcode}/{sample}_{number}_{lane}_R1_{suffix}.{fastq}.{compress}' \
+      .format( \
+        sample=res['id'],
+        modality=modality,
+        barcode=barcodes_dict[res['id']][modality],
+        number=res['number'], \
+        lane=res['lane'], \
+        suffix=res['suffix'], \
+        fastq=res['fastq'], \
+        compress=res['compress']
+      ) for sample_id in samples_list for modality in barcodes_dict[sample_id].keys() for res in get_fastq_info_from_folder(raw_dir, sample_id)],
+    in2 = lambda wildcards: [proc_dir + '{sample}/{modality}_{barcode}/fastq/barcode_{barcode}/{sample}_{number}_{lane}_R2_{suffix}.{fastq}.{compress}' \
+      .format( \
+        sample=res['id'],
+        modality=modality,
+        barcode=barcodes_dict[res['id']][modality],
+        number=res['number'], \
+        lane=res['lane'], \
+        suffix=res['suffix'], \
+        fastq=res['fastq'], \
+        compress=res['compress']
+      ) for sample_id in samples_list for modality in barcodes_dict[sample_id].keys() for res in get_fastq_info_from_folder(raw_dir, sample_id)],
+    in3 = lambda wildcards: [proc_dir + '{sample}/{modality}_{barcode}/fastq/barcode_{barcode}/{sample}_{number}_{lane}_R3_{suffix}.{fastq}.{compress}' \
+      .format( \
+        sample=res['id'],
+        modality=modality,
+        barcode=barcodes_dict[res['id']][modality],
+        number=res['number'], \
+        lane=res['lane'], \
+        suffix=res['suffix'], \
+        fastq=res['fastq'], \
+        compress=res['compress']
+      ) for sample_id in samples_list for modality in barcodes_dict[sample_id].keys() for res in get_fastq_info_from_folder(raw_dir, sample_id)],
+    infile1 = lambda wildcards: [proc_dir+'{sample}/{modality}_{barcode}/fastq/{modality}_{barcode}_{sample}_{number}_{lane}_{suffix}.{fastq}.{compress}_debarcode.done' \
+      .format( \
+        sample=res['id'],
+        modality=modality,
+        barcode=barcodes_dict[res['id']][modality],
+        number=res['number'], \
+        lane=res['lane'], \
+        suffix=res['suffix'], \
+        fastq=res['fastq'], \
+        compress=res['compress']
+      ) for sample_id in samples_list for modality in barcodes_dict[sample_id].keys() for res in get_fastq_info_from_folder(raw_dir, sample_id)],
+    infile2 = proc_dir+'get_barcodes_cellranger.done'
+  output:
+    bam = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_bam.bam',
+    frag = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/fragments.tsv.gz',
+    meta = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/singlecell.csv',
+    peaks = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/peaks.bed',
+    outfile = touch(proc_dir + '{sample}/{modality}_{barcode}/{sample}_run_cellranger.done')
+  params:
+    cellranger_software = config['general']['cellranger']['software_bin'],
+    cellranger_ref = config['general']['cellranger']['reference_path'],
+    processed_dir = proc_dir,
+    cellranger_mem = config['general']['cellranger']['mem'],
+    fastq_folder = proc_dir + '{sample}/{modality}_{barcode}/fastq/barcode_{barcode}/'
+  threads: config['general']['cellranger']['core']
+  shell:
+    '''
+    rm -rf {params.processed_dir}{wildcards.sample}/{wildcards.modality}_{wildcards.barcode}/cellranger/;
+    cd {params.processed_dir}{wildcards.sample}/{wildcards.modality}_{wildcards.barcode}/;
+    {params.cellranger_software} count \
+      --id cellranger \
+      --reference {params.cellranger_ref} \
+      --fastqs {params.fastq_folder} \
+      --sample={wildcards.sample}\
+      --localcores={threads} \
+      --localmem={params.cellranger_mem}
+    '''
+
+rule cellranger_bam_to_namesorted:
+    input:
+        bam = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_bam.bam',
+    output:
+        bam = temp(proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/namesorted_bam.bam'),
+    params:
+        tempfolder = config['general']['tempdir']
+    threads: 20
+    resources:
+        mem_mb = 32000
+    conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
+    shell:
+        'samtools sort -T {params.tempfolder} -@ {threads} -n -o {output.bam} {input.bam} '
+
+rule remove_LA_duplicates:
+    input:
+        bam = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/namesorted_bam.bam',
+    output:
+        bam = temp(proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/namesorted_noLA_duplicates_bam.bam'),
+    params:
+        script = workflow.basedir + '/scripts/remove_LA_duplicates.py',
+    conda: '../envs/dbit-spatial-nanoct-rna-debarcode.yaml'
+    resources:
+        mem_mb = 32000
+    shell:
+        'python3 {params.script} {input.bam} {output.bam}'
+
+rule possort_noLA_bam_file:
+    input:
+        bam = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/namesorted_noLA_duplicates_bam.bam',
+    output:
+        bam   = temp(proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_noLA_duplicates_bam.bam'),
+        index = temp(proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_noLA_duplicates_bam.bam.bai'),
+    conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
+    threads: 20
+    resources:
+        mem_mb = 32000
+    params:
+        tempfolder = config['general']['tempdir']
+    shell:
+        'samtools sort -@ {threads} -T {params.tempfolder} -o {output.bam} {input.bam}; '
+        'samtools index {output.bam} '
+
+rule bam_noLA_to_fragments_noLA:
+    input:
+        bam = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_noLA_duplicates_bam.bam',
+        index= proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_noLA_duplicates_bam.bam.bai',
+    output:
+        fragmments = temp(proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/fragments_noLA_duplicates.tsv'),
+    conda: '../envs/dbit-spatial-nanoct-rna-sinto.yaml'
+    threads: 20
+    resources:
+        mem_mb=16000
+    shell:
+        'sinto fragments -b {input.bam} -f {output.fragmments} -p {threads}'
+
+rule sort_sinto_output:
+    input:
+        fragments = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/fragments_noLA_duplicates.tsv',
+    output:
+        fragments = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/fragments_noLA_duplicates.tsv.gz',
+        index      = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/fragments_noLA_duplicates.tsv.gz.tbi',
+    resources:
+        mem_mb = 16000
+    shell:
+        'sort -k1,1 -k2,2n {input.fragments} | bgzip > {output.fragments}; '
+        'tabix -p bed {output.fragments} '
+
+rule bam_to_bw: # For QC reasons
+    input:
+        cellranger_bam = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_bam.bam'
+    output:
+        bigwig = proc_dir + '{sample}/{modality}_{barcode}/bigwig/all_reads.bw'
+    threads: 20
+    conda: '../envs/dbit-spatial-nanoct-rna-bamcoverage.yaml'
+    resources:
+        mem_mb = 16000
+    shell:
+        'bamCoverage -b {input.cellranger_bam} -o {output.bigwig} -p {threads} --minMappingQuality 5 '
+        ' --binSize 50 --centerReads --smoothLength 250 --normalizeUsing RPKM --ignoreDuplicates --extendReads'
+
+rule run_macs_broad:
+    input:
+        cellranger_bam=proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_bam.bam'
+    output:
+        broad_peaks=proc_dir + '{sample}/{modality}_{barcode}/peaks/macs_broad/{modality}_peaks.broadPeak'
+    params:
+        macs_outdir=proc_dir + '{sample}/{modality}_{barcode}/peaks/macs_broad/',
+        macs_genome=config['general']['macs_genome']
+    conda: '../envs/dbit-spatial-nanoct-rna-macs.yaml'
+    resources:
+        mem_mb = 16000
+    shell:
+        'macs2 callpeak -t {input} -g {params.macs_genome} -f BAMPE -n {wildcards.modality} '
+        '--outdir {params.macs_outdir} --llocal 100000 --keep-dup 1 --broad-cutoff 0.1 '
+        '--max-gap 1000 --broad 2>&1 '
+
+rule barcode_metrics_peaks:
+    input:
+        bam=proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_bam.bam',
+        peaks=proc_dir + '{sample}/{modality}_{barcode}/peaks/macs_broad/{modality}_peaks.broadPeak',
+    output:
+        overlap=proc_dir + '{sample}/{modality}_{barcode}/barcode_metrics/peaks_barcodes.txt'
+    params:
+        get_cell_barcode=workflow.basedir + '/scripts/get_cell_barcode.awk',
+        add_sample_to_list=workflow.basedir + '/scripts/add_sample_to_list.py',
+        tmpdir=config['general']['tempdir']
+    conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
+    resources:
+        mem_mb = 16000
+    shell:
+        'bedtools intersect -abam {input.bam} -b {input.peaks} -u | samtools view -f2 | '
+        'awk -f {params.get_cell_barcode} | sed "s/CB:Z://g" |  '
+        'sort -T {params.tmpdir} | uniq -c > {output.overlap} && [[ -s {output.overlap} ]] ; '
+
+rule barcode_metrics_all:
+    input:
+        bam=proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_bam.bam',
+    output:
+        all_bcd=proc_dir + '{sample}/{modality}_{barcode}/barcode_metrics/all_barcodes.txt'
+    params:
+        get_cell_barcode=workflow.basedir + '/scripts/get_cell_barcode.awk',
+        add_sample_to_list=workflow.basedir + '/scripts/add_sample_to_list.py',
+        tmpdir=config['general']['tempdir']
+    conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
+    resources:
+        mem_mb = 16000
+    shell:
+        'mkdir -p {params.tmpdir}; '
+        'samtools view -f2 {input.bam}| '
+        'awk -f {params.get_cell_barcode} | sed "s/CB:Z://g" |  '
+        'sort -T {params.tmpdir} | uniq -c > {output.all_bcd} && [[ -s {output.all_bcd} ]] ; '
+
+rule clean_cellranger_output:
+    input:
+        bam = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_bam.bam',
+        frag = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/fragments.tsv.gz',
+        meta = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/singlecell.csv',
+        peaks = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/peaks.bed',
+    output:
+        proc_dir + '{sample}/{modality}_{barcode}/_clean_cellranger.out'
+    params:
+        cellranger_folder = proc_dir + '{sample}/{modality}_{barcode}/cellranger/'
+    shell:
+        'touch {params.cellranger_folder}/tmp.txt;'                     # Create temp empty file to avoid error if the directory is empty
+        'ls -d  {params.cellranger_folder}/* | grep -v outs | xargs rm -r; '
+        'touch {output}'
+
+
+rule create_matrix_peaks:
+    # Requires fragtk installation (https://github.com/stuart-lab/fragtk)
+    input:
+        frag  = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/fragments.tsv.gz',
+        peaks = proc_dir + '{sample}/{modality}_{barcode}/peaks/macs_broad/{modality}_peaks.broadPeak',
+        cells = proc_dir + '{sample}/all_cells.txt'
+    output:
+        features = proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_peaks/features.tsv.gz',
+        matrix   = proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_peaks/matrix.mtx.gz',
+        barcodes = proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_peaks/barcodes.tsv',
+        folder   = directory(proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_peaks/'),
+    conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
+    shell:
+        'fragtk matrix -f {input.frag} -b {input.peaks} -c {input.cells} -o {output.folder}'
+
+rule create_matrix_bins:
+    input:
+        bam   = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_bam.bam',
+        frag  = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/fragments.tsv.gz',
+        cells = proc_dir + '{sample}/all_cells.txt'
+    output:
+        features   = proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_bin_{bins}/features.tsv.gz',
+        matrix     = proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_bin_{bins}/matrix.mtx.gz',
+        barcodes   = proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_bin_{bins}/barcodes.tsv',
+        folder     = directory(proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_bin_{bins}/'),
+        chromsizes = temp(proc_dir + '{sample}/{modality}_{barcode}/chromsizes_{bins}.txt'),
+        windows    = temp(proc_dir + '{sample}/{modality}_{barcode}/windows_{bins}.txt'),
+    conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
+    shell:
+        """
+        samtools idxstats {input.bam} | cut -f1-2 | awk '$2 != 0' > {output.chromsizes}; 
+        bedtools makewindows -g {output.chromsizes} -w {wildcards.bins} > {output.windows}; 
+        fragtk matrix -f {input.frag} -b {output.windows} -c {input.cells} -o {output.folder}; 
+        """
+    
+rule create_genebody_and_promoter_matrix:
+    input:
+        cellranger_gtf = config['general']['cellranger']['reference_path'] + 'genes/genes.gtf.gz',
+        frag           = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/fragments.tsv.gz',
+        cells          = proc_dir + '{sample}/all_cells.txt',
+    output:
+        genebody_gtf = proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_genes/genebody_and_promoter.gtf',
+        genebody_bed = proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_genes/genebody_and_promoter.bed',
+        gene_names   = proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_genes/gene_names.txt',
+        features     = proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_genes/features.tsv.gz',
+        matrix       = proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_genes/matrix.mtx.gz',
+        barcodes     = proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_genes/barcodes.tsv',
+        folder       = directory(proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_genes/'),
+    conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
+    params:
+        script = workflow.basedir + '/scripts/filter_cellranger_gtf_file.py',
+    shell:
+        'python3 {params.script} -i {input.cellranger_gtf} -o {output.genebody_gtf} -n {output.gene_names};'
+        'cut -f 1,4,5 {output.genebody_gtf} > {output.genebody_bed};'
+        'fragtk matrix -f {input.frag} -b {output.genebody_bed} -c {input.cells} -o {output.folder}; '

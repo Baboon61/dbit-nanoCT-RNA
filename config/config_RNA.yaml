@@ -1,0 +1,31 @@
+samples:                                                                                                                     # Modify the name of your sample
+  [
+  P35765_1008
+  #P35765_1009,
+  #P35765_1010,
+  #P35765_1011,
+  #P35765_1012,
+  #P35765_1013
+  ]
+
+general:
+  rawData_dir: /datf/gcb/gcb_YD/raw_data/20250522_P35765_ngisthlm01580_rawdata/files/P35765/                                 # Modify raw sequencing data directory
+  processedData_dir: /date/gcb/gcb_BH/Data/SCTYH/P35765/Processed/RNA                                                         # Modify processed sequencing data directory
+  spatial_barcodes_file: /date/gcb/gcb_BH/Proj/SCTYH/spatial_barcodes_10000.txt                                              # Modify the path to the spatial barcodes file with positions, as a .txt file
+  read_barcode: R2                                                                                                           # Modify which R file contains the barcodes in RNA sample
+  core: 2                                                                                                                    # Modify threads to use
+  tempdir: /date/gcb/gcb_BH/Data/SCTYH/P35765/Processed/tmp_RNA/                                                             # Modify path to a tmp folder already created
+  cellranger:
+    software_bin: /date/gcb/gcb_BH/cellranger_spatial/cellranger-7.1.0/cellranger                                            # Modify the path to cellranger RNA binaries
+    reference_path: /date/gcb/gcb_BH/cellranger_spatial/refdata-gex-GRCh38-2020-A/                                           # Modify the path to cellranger RNA reference
+    barcodes_path: /date/gcb/gcb_BH/cellranger_spatial/cellranger-7.1.0/lib/python/cellranger/barcodes/                      # Modify the path of the cellranger RNA barcodes file for your cellranger version (Maybe 737K-arc-v1.txt.gz)
+    barcodes_file: 3M-february-2018.txt.gz                                                                                   # Modify the name of the cellranger RNA barcode file for your cellranger version (Maybe 737K-arc-v1.txt.gz)
+    core: 8                                                                                                                  # Modify the number of threads to use in cellRanger
+    mem: 64                                                                                                                  # Modify the memory to use in cellRanger
+  PCRprimer_sequence: CAAGCGTTGGCTTCTCGCATCT                                                                                 # Modify the PCR primer sequence
+  linker1_sequence: GTGGCCGATGTTTCGCATCGGCGTACGACT                                                                           # Modify the linker1 sequence
+  linker2_sequence: ATCCACGTGCTTGAGAGGCCAGAGCATTCG                                                                           # Modify the linker2 sequence
+  spatial_barcode1_length: 8                                                                                                 # Modify the length of the spatial barcode1
+  spatial_barcode2_length: 8                                                                                                 # Modify the length of the spatial barcode2
+  umi_barcode_length: 10                                                                                                     # Modify the length of the nano RNA barcode
+  hamming_distance_linkers: 3                                                                                                # Modify the hamming distance for linkers QC check
