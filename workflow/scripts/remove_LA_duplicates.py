@@ -1,6 +1,7 @@
 import pysam
 import sys
 import json
+import argparse
 
 # Marek Bartosovic 13/06/2023
 # Script which removes linear amplification duplicates from possorted_bam.bam file from cellranger
@@ -11,14 +12,16 @@ import json
 # samtools sort -@ 10 -n -o namesorted_bam.bam possorted_bam.bam
 
 
-# Input
-samfile = pysam.AlignmentFile(sys.argv[1], "rb")
+parser = argparse.ArgumentParser(
+    description="Remove linear amplification duplicates from a name-sorted Cell Ranger BAM."
+)
+parser.add_argument("input_bam", help="Input BAM sorted by read name")
+parser.add_argument("output_bam", help="Output BAM without linear amplification duplicates")
+args = parser.parse_args()
 
-#Output
-sam_out = pysam.AlignmentFile(sys.argv[2], "wb", header=samfile.header)
-
-# Stats output:
-stats_out = sys.argv[2] + "_stats.txt"
+samfile = pysam.AlignmentFile(args.input_bam, "rb")
+sam_out = pysam.AlignmentFile(args.output_bam, "wb", header=samfile.header)
+stats_out = args.output_bam + "_stats.txt"
 
 reads_unique = {}
 stats = {
@@ -36,7 +39,12 @@ n = 0
 read1 = False
 read2 = False
 
-for line in samfile:
+while True:
+    try:
+        read1 = next(samfile)
+    except StopIteration:
+        break
+
     n += 1
     if n % 100000 == 0:
         sys.stderr.write('*** {} lines processed\n'.format(n))
@@ -47,14 +55,19 @@ for line in samfile:
     #     print(stats)
     #     break
 
-    # File needs to be namesorted - read a read pair
-    read1 = line            # R1
-    read2 = next(samfile)   # R2
+    try:
+        read2 = next(samfile)
+    except StopIteration:
+        sys.exit("*** Error: input BAM ended with an unpaired read: {}\n"
+                 "*** Perhaps the BAM is not name-sorted or contains incomplete pairs?\n".format(read1.query_name))
 
-    # Some assertion to make sure we are in namesorted file and read1 and read2 follow each other
-    assert read1.query_name == read2.query_name, "Reads name do not match for R1 and R2 in: \n" + str(read1) + "\n" + str(read2) + '\n *** Perhaps the bam file is not namesorted ? ***'
-    assert read1.is_read1
-    assert not read2.is_read1
+    if read1.query_name != read2.query_name:
+        sys.exit("*** Error: paired reads are not adjacent in input BAM.\n"
+                 "Read 1: {}\nRead 2: {}\n"
+                 "*** Perhaps the BAM is not name-sorted?\n".format(read1.query_name, read2.query_name))
+    if not read1.is_read1 or not read2.is_read2:
+        sys.exit("*** Error: unexpected read-pair flags for read '{}'.\n"
+                 "Expected first record to be R1 and second record to be R2.\n".format(read1.query_name))
 
     if read1.is_unmapped or read2.is_unmapped:
         stats['not mapped'] += 1
@@ -64,7 +77,11 @@ for line in samfile:
         stats['not proper'] += 1
         continue
 
-    cell_barcode = read1.get_tag('CR')
+    try:
+        cell_barcode = read1.get_tag('CR')
+    except KeyError:
+        sys.exit("*** Error: read '{}' is missing the CR cell-barcode tag.\n"
+                 "Expected Cell Ranger ATAC-style BAM tags.\n".format(read1.query_name))
     read1_position = '{}_{}_{}'.format(read1.reference_name, + read1.reference_start, cell_barcode)
     read2_position = '{}_{}_{}'.format(read1.next_reference_name, + read1.next_reference_start, cell_barcode)
 
@@ -101,3 +118,6 @@ for line in samfile:
 
 with open(stats_out,'w') as f:
     json.dump(stats,f)
+
+samfile.close()
+sam_out.close()

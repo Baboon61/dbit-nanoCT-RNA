@@ -7,7 +7,12 @@ import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 from Bio.SeqIO.QualityIO import FastqGeneralIterator
-from gzip import open as gzopen
+import gzip
+
+def open_maybe_gzip(path, mode):
+  if path.endswith(".gz"):
+    return gzip.open(path, mode)
+  return open(path, mode)
 
 #Check integer arguments
 def check_positive(value):
@@ -48,7 +53,7 @@ for x in range(0,94):
 #Estimate the highest base Qcore of the file
 nb_line=0
 top_qscore=0
-with gzopen(input_file, "rt") as in_handle:
+with open_maybe_gzip(input_file, "rt") as in_handle:
   for title, seq, qual in FastqGeneralIterator(in_handle):
     tmp_top_qscore = max(list(map(decode, qual)))
     if tmp_top_qscore > top_qscore:
@@ -71,7 +76,7 @@ bc1_end=bc1_start+spatial_barcode1_length-1
 #Extract the spatial barcodes sequences and qualities and calculate the penalty scores
 count=0
 read_penalty_dict = {}
-with gzopen(input_file, "rt") as in_handle:
+with open_maybe_gzip(input_file, "rt") as in_handle:
   for title, seq, qual in FastqGeneralIterator(in_handle):
     pxl_bcd_seq = seq[bc2_start-1:bc2_end] + seq[bc1_start-1:bc1_end] # !!! BC2 + BC1
     pxl_bcd_qual = qual[bc2_start-1:bc2_end] + qual[bc1_start-1:bc1_end]

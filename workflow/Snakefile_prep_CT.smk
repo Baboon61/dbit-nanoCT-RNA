@@ -45,6 +45,16 @@ def validate_existing_file(path, config_key):
   if os.path.getsize(path) == 0:
     sys.exit("*** Error: {} is empty: {}\n".format(config_key, path))
 
+def ensure_writable_directory(path, config_key):
+  try:
+    os.makedirs(path, exist_ok=True)
+  except OSError as error:
+    sys.exit("*** Error: could not create {} directory '{}': {}\n".format(config_key, path, error))
+  if not os.path.isdir(path):
+    sys.exit("*** Error: {} is not a directory: {}\n".format(config_key, path))
+  if not os.access(path, os.W_OK):
+    sys.exit("*** Error: {} is not writable: {}\n".format(config_key, path))
+
 def validate_cellranger_config(cellranger_config):
   if not os.path.isfile(cellranger_config['software_bin']):
     sys.exit("*** Error: general.cellranger.software_bin does not exist or is not a file: {}\n".format(cellranger_config['software_bin']))
@@ -62,7 +72,7 @@ def validate_sample_fastqs(sample, expected_reads):
   records = get_fastq_info_from_folder(raw_dir, sample)
   if not records:
     sys.exit("*** Error: no FASTQ files were found for sample: {}\n"
-             "Expected files under rawData_dir/<sample>/ matching **/*.fastq.gz.\n"
+             "Expected files under rawData_dir/<sample>/ matching **/*.fastq.gz, **/*.fq.gz, **/*.fastq, or **/*.fq.\n"
              "rawData_dir is currently: {}\n".format(sample, raw_dir))
 
   unexpected_ids = sorted(set(record['id'] for record in records if record['id'] != sample))
@@ -74,7 +84,7 @@ def validate_sample_fastqs(sample, expected_reads):
 
   read_groups = {}
   for record in records:
-    key = (record['id'], record['number'], record['lane'], record['suffix'], record['fastq'], record['compress'])
+    key = (record['id'], record['number'], record['lane'], record['suffix'], record['ext'])
     read_groups.setdefault(key, set()).add(record['read'])
 
   missing_groups = []
@@ -94,6 +104,8 @@ if not os.path.isdir(raw_dir):
   sys.exit("*** Error: rawData_dir does not exist or is not a directory: {}\n"
            "Please update general.rawData_dir in config/config_CT.yaml.\n".format(raw_dir))
 
+ensure_writable_directory(proc_dir, "general.processedData_dir")
+ensure_writable_directory(config['general']['tempdir'], "general.tempdir")
 validate_existing_file(config['general']['spatial_barcodes_file'], "general.spatial_barcodes_file")
 validate_cellranger_config(config['general']['cellranger'])
 
@@ -103,12 +115,14 @@ res = [res for sample_id in samples_list for res in fastq_info_by_sample[sample_
 
 #Check that the cores argument are lower than the rules cores parameters
 if workflow.cores < config['general']['cellranger']['core']:
-  #sys.exit(1)
-  sys.stderr.write("Not enough core is given as parameters to the snakemake command line to run cellranger rule (core in Cellrnager section in the config file)\n")
+  sys.exit("*** Error: not enough cores were given to Snakemake.\n"
+           "Requested workflow cores: {}\n"
+           "Required by general.cellranger.core: {}\n".format(workflow.cores, config['general']['cellranger']['core']))
 
 if workflow.cores < config['general']['core']:
-  #sys.exit(1)
-  sys.stderr.write("Not enough core is given as parameters to the snakemake command line to run the general rules (core in the config file)\n")
+  sys.exit("*** Error: not enough cores were given to Snakemake.\n"
+           "Requested workflow cores: {}\n"
+           "Required by general.core: {}\n".format(workflow.cores, config['general']['core']))
 
 #Remove the back up file from the cellranger barcodes to allow the copy of the new ones in rule get_barcodes_cellranger
 if os.path.exists(config['general']['cellranger']['barcodes_path'] + 'BAK_' + config['general']['cellranger']['barcodes_file']):
@@ -119,9 +133,12 @@ Error_message="*** Error: Wrong input files specified. The input must follow 10X
         "The files should be placed in the same folder specify as raw folder in the config.yaml file\n"
 
 for sample in samples_list:
-  file_name_list = glob.glob(raw_dir + "/" + sample + "/**/*.fastq.gz",recursive=True)
+  file_name_list = glob.glob(raw_dir + "/" + sample + "/**/*.fastq.gz", recursive=True)
+  file_name_list.extend(glob.glob(raw_dir + "/" + sample + "/**/*.fq.gz", recursive=True))
+  file_name_list.extend(glob.glob(raw_dir + "/" + sample + "/**/*.fastq", recursive=True))
+  file_name_list.extend(glob.glob(raw_dir + "/" + sample + "/**/*.fq", recursive=True))
   for file_name in file_name_list:
-    if not len(re.split("\.",os.path.basename(file_name))) == 3:
+    if len(re.split("\.", os.path.basename(file_name))) not in [2, 3]:
       sys.exit(1)
       sys.stderr.write(Error_message)
 
@@ -138,9 +155,6 @@ for file_struc in res:
   elif not re.match("[0-9]+",file_struc['suffix']):
     sys.exit(1)
     sys.stderr.write(Error_message)
-  elif not file_struc['fastq'] == 'fastq' or file_struc['fastq'] == 'fq':
-    sys.exit(1)
-    sys.stderr.write(Error_message)
-  elif not file_struc['compress'] == 'gz':
+  elif file_struc['ext'] not in ['fastq.gz', 'fq.gz', 'fastq', 'fq']:
     sys.exit(1)
     sys.stderr.write(Error_message)

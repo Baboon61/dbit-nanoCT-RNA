@@ -17,6 +17,11 @@ import Levenshtein
 def log(message):
     sys.stderr.write(time.strftime("%Y-%m-%d %H:%M:%S") + " " + message + "\n")
 
+def open_maybe_gzip(path, mode):
+    if path.endswith(".gz"):
+        return gzip.open(path, mode)
+    return open(path, mode)
+
 class bcdCT:
     def __init__(self,args):
         self.detect_input(args.input)
@@ -38,7 +43,7 @@ class bcdCT:
         self.prep_out_filenames()
 
     def detect_input(self,input):
-        Error_message="*** Error: Wrong input files specified. The input must be either folder with _R1_*.fastq.gz _R2_*.fastq.gz _R3_*.fastq.gz files or paths to the files themselves ***" +\
+        Error_message="*** Error: Wrong input files specified. The input must be either folder with _R1_*.fastq[.gz] _R2_*.fastq[.gz] _R3_*.fastq[.gz] files or paths to the files themselves ***" +\
         "The files should be placed in the same folder" +\
         "e.g. /data/path_to_my_files/*L001*.fastq.gz or /data/path_to_my_files/"
 
@@ -48,6 +53,8 @@ class bcdCT:
             self.input_files = []
             self.input_files.extend(glob(self.input_dir + "/*.fastq.gz"))
             self.input_files.extend(glob(self.input_dir + "/*.fq.gz"))
+            self.input_files.extend(glob(self.input_dir + "/*.fastq"))
+            self.input_files.extend(glob(self.input_dir + "/*.fq"))
 
         elif len(input) > 1:                                  # Case input are multiple files
             self.input_files = input
@@ -55,7 +62,7 @@ class bcdCT:
             if not len(self.input_dir) == 1:
                 log(Error_message)
                 sys.exit(1)
-            if not sum([x.endswith('.fastq.gz') or x.endswith('.fq.gz') for x in self.input_files]) == len(self.input_files):
+            if not sum([x.endswith('.fastq.gz') or x.endswith('.fq.gz') or x.endswith('.fastq') or x.endswith('.fq') for x in self.input_files]) == len(self.input_files):
                 sys.exit(1)
                 log(Error_message)
         else:
@@ -121,7 +128,7 @@ class bcdCT:
     def create_out_handles(self,stack):
         for bcd in self.picked_barcodes:
             os.makedirs(self.out_prefix + "/barcode_" + bcd, exist_ok=True)
-        self.out_stack = {barcode: {read: stack.enter_context(gzip.open(self.path_out[barcode][read],'wt'))for read in self.out_reads} for barcode in self.picked_barcodes}
+        self.out_stack = {barcode: {read: stack.enter_context(open_maybe_gzip(self.path_out[barcode][read],'wt'))for read in self.out_reads} for barcode in self.picked_barcodes}
 
 
     def __iter__(self):

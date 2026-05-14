@@ -1,7 +1,12 @@
 from Bio.SeqIO.QualityIO import FastqGeneralIterator
-from gzip import open as gzopen
+import gzip
 
 import argparse
+
+def open_maybe_gzip(path, mode):
+  if path.endswith(".gz"):
+    return gzip.open(path, mode)
+  return open(path, mode)
 
 def check_positive(value):
   ivalue = int(value)
@@ -40,7 +45,7 @@ bc1_end=bc1_start+spatial_barcode1_length-1
 bc_umi_start=bc1_end+linker1_length+1
 bc_umi_end=bc_umi_start+umi_barcode_length-1
 
-with gzopen(input_file, "rt") as in_handle, gzopen(output_file, "wt") as out_handle:
+with open_maybe_gzip(input_file, "rt") as in_handle, open_maybe_gzip(output_file, "wt") as out_handle:
     for title, seq, qual in FastqGeneralIterator(in_handle):
     
         pxl_bcd_seq = seq[bc2_start-1:bc2_end] + seq[bc1_start-1:bc1_end] # !!! BC2 + BC1
