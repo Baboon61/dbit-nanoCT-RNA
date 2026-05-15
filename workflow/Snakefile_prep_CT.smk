@@ -119,17 +119,6 @@ validate_cellranger_config(config['general']['cellranger'])
 fastq_info_by_sample = {sample_id: validate_sample_fastqs(sample_id, ['R1', 'R2']) for sample_id in samples_list}
 res = [res for sample_id in samples_list for res in fastq_info_by_sample[sample_id]]
 
-#Check that the cores argument are lower than the rules cores parameters
-if workflow.cores < config['general']['cellranger']['core']:
-  sys.exit("*** Error: not enough cores were given to Snakemake.\n"
-           "Requested workflow cores: {}\n"
-           "Required by general.cellranger.core: {}\n".format(workflow.cores, config['general']['cellranger']['core']))
-
-if workflow.cores < config['general']['core']:
-  sys.exit("*** Error: not enough cores were given to Snakemake.\n"
-           "Requested workflow cores: {}\n"
-           "Required by general.core: {}\n".format(workflow.cores, config['general']['core']))
-
 #Remove the back up file from the cellranger barcodes to allow the copy of the new ones in rule get_barcodes_cellranger
 if os.path.exists(config['general']['cellranger']['barcodes_path'] + 'BAK_' + config['general']['cellranger']['barcodes_file']):
   os.remove(config['general']['cellranger']['barcodes_path'] + 'BAK_' + config['general']['cellranger']['barcodes_file'])
