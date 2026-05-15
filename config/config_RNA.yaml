@@ -1,16 +1,15 @@
 samples:                                                                                                                     # Modify the name of your sample
   [
-  P35765_1008
-  #P35765_1009,
+  P35765_1010
   ]
 
 general:
-  rawData_dir: /datf/gcb/gcb_YD/raw_data/20250522_P35765_ngisthlm01580_rawdata/files/P35765/                                 # Modify raw sequencing data directory
-  processedData_dir: /date/gcb/gcb_BH/Data/SCTYH/P35765/Processed/RNA                                                         # Modify processed sequencing data directory
-  spatial_barcodes_file: /date/gcb/gcb_BH/Proj/SCTYH/spatial_barcodes_10000.txt                                              # Modify the path to the spatial barcodes file with positions, as a .txt file
+  rawData_dir: /date/gcb/gcb_BH/Data/SCTYH/P35765/Raw                                                                        # Modify raw sequenc$
+  processedData_dir: /date/gcb/gcb_BH/Data/SCTYH/Test/Processed/RNA                                                       # Modify processed s$
+  spatial_barcodes_file: /date/gcb/gcb_BH/Proj/Tools/dbit-nanoCT-RNA/barcodes/spatial_barcodes_10000.txt                                         $
   read_barcode: R2                                                                                                           # Modify which R file contains the barcodes in RNA sample
   core: 2                                                                                                                    # Modify threads to use
-  tempdir: /date/gcb/gcb_BH/Data/SCTYH/P35765/Processed/tmp_RNA/                                                             # Modify path to a tmp folder already created
+  tempdir: /date/gcb/gcb_BH/Data/SCTYH/Test/Processed/tmp_RNA/                                                             # Modify path to a tmp folder already created
   cellranger:
     software_bin: /date/gcb/gcb_BH/cellranger_spatial/cellranger-7.1.0/cellranger                                            # Modify the path to cellranger RNA binaries
     reference_path: /date/gcb/gcb_BH/cellranger_spatial/refdata-gex-GRCh38-2020-A/                                           # Modify the path to cellranger RNA reference

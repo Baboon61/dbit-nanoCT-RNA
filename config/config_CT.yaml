@@ -1,24 +1,16 @@
 samples:
-  P35765_1001:                                                                                                               # Modify the name of your sample
-    barcodes:                                                                                                                # Modify the different antibody barcodes
-      H3K4me3: CCTATCCT
-      H3K27me3: ATAGAGGC
-  P35765_1002:                                                                                                               # Modify the name of your sample
-    barcodes:                                                                                                                # Modify the different antibody barcodes
-      H3K4me3: CCTATCCT
-      H3K27me3: ATAGAGGC
   P35765_1003:                                                                                                               # Modify the name of your sample
     barcodes:                                                                                                                # Modify the different antibody barcodes
       H3K4me3: CCTATCCT
       H3K27me3: ATAGAGGC
 
 general:
-  rawData_dir: /datf/gcb/gcb_YD/raw_data/20250522_P35765_ngisthlm01580_rawdata/files/P35765/                                 # Modify raw sequencing data directory
-  processedData_dir: /date/gcb/gcb_BH/Data/SCTYH/P35765/Processed/CutTag                                                     # Modify processed sequencing data directory
-  spatial_barcodes_file: /date/gcb/gcb_BH/Proj/SCTYH/spatial_barcodes_10000.txt                                              # Modify the path to the spatial barcodes file with positions, as a .txt file
+  rawData_dir: /date/gcb/gcb_BH/Data/SCTYH/P35765/Raw                                                                        # Modify raw sequenc$
+  processedData_dir: /date/gcb/gcb_BH/Data/SCTYH/Test/Processed/CutTag                                                       # Modify processed s$
+  spatial_barcodes_file: /date/gcb/gcb_BH/Proj/Tools/dbit-nanoCT-RNA/barcodes/spatial_barcodes_10000.txt                                         $
   read_barcode: R2                                                                                                           # Modify which R file contains the barcodes in CutTag sample
   core: 2                                                                                                                    # Modify threads to use
-  tempdir: /date/gcb/gcb_BH/Data/SCTYH/P35765/Processed/tmp_CT/                                                              # Modify path to a tmp folder already created
+  tempdir: /date/gcb/gcb_BH/Data/SCTYH/Test/Processed/tmp_CT/                                                              # Modify path to a tmp folder already created
   cellranger:
     software_bin: /date/gcb/gcb_BH/cellranger_spatial/cellranger-atac-2.1.0/cellranger-atac                                  # Modify the path to cellranger CutTag binaries
     reference_path: /date/gcb/gcb_BH/cellranger_spatial/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/                          # Modify the path to cellranger CutTag reference
@@ -35,4 +27,4 @@ general:
   spatial_barcode2_length: 8                                                                                                 # Modify the length of the spatial barcode2
   nanoCutTag_barcode_length: 8                                                                                               # Modify the length of the nano CutTag barcode
   hamming_distance_linkers: 3  
-  bin_sizes: 5000                                                                                             # Modify the hamming distance for linkers QC check
+  bin_sizes: [2500]                                                                                             # Modify the hamming distance for linkers QC check
