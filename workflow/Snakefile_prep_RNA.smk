@@ -9,6 +9,11 @@ include: 'Snakefile_func.smk'
 
 configfile: workflow.basedir + '/../config/config_RNA.yaml'
 
+repo_root = os.path.abspath(os.path.join(workflow.basedir, '..'))
+
+def resolve_repo_path(path):
+  return path if os.path.isabs(path) else os.path.join(repo_root, path)
+
 #Put CutTag samples into variables
 samples_list  = config['samples']
 print("RNA samples to be processed : {}".format(samples_list))
@@ -30,6 +35,7 @@ else:
 #Clean path for raw and processed data to have / at the end of the paths
 raw_dir = config['general']['rawData_dir'] if config['general']['rawData_dir'][-1] == '/' else config['general']['rawData_dir']+"/"
 proc_dir = config['general']['processedData_dir'] if config['general']['processedData_dir'][-1] == '/' else config['general']['processedData_dir']+"/"
+config['general']['spatial_barcodes_file'] = resolve_repo_path(config['general']['spatial_barcodes_file'])
 
 def validate_existing_file(path, config_key):
   if not os.path.isfile(path):

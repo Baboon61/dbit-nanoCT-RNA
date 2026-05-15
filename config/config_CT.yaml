@@ -7,7 +7,7 @@ samples:
 general:
   rawData_dir: /date/gcb/gcb_BH/Data/SCTYH/P35765/Raw                                                                        # Modify raw sequenc$
   processedData_dir: /date/gcb/gcb_BH/Data/SCTYH/Test/Processed/CutTag                                                       # Modify processed s$
-  spatial_barcodes_file: /date/gcb/gcb_BH/Proj/Tools/dbit-nanoCT-RNA/barcodes/spatial_barcodes_10000.txt                                         $
+  spatial_barcodes_file: barcodes/spatial_barcodes_10000.txt
   read_barcode: R2                                                                                                           # Modify which R file contains the barcodes in CutTag sample
   core: 2                                                                                                                    # Modify threads to use
   tempdir: /date/gcb/gcb_BH/Data/SCTYH/Test/Processed/tmp_CT/                                                              # Modify path to a tmp folder already created
