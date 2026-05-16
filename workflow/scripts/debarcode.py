@@ -185,7 +185,7 @@ class bcdCT:
         
 
 def get_read_barcode(string,index):
-    read_barcode = revcompl(string.sequence[index - len(args.barcode[0]):index])  # Get the barcode sequence
+    read_barcode = string.sequence[index - len(args.barcode[0]):index].upper()  # Get the barcode sequence
     return read_barcode
 
 def extract_cell_barcode(read,index):
@@ -224,6 +224,9 @@ def flush_buffers(buffers, out_stack):
             if buffers[bcd][read]:
                 out_stack[bcd][read].write("".join(buffers[bcd][read]))
                 buffers[bcd][read].clear()
+
+def count_selected_barcode_reads(statistics, picked_barcodes):
+    return sum(statistics[barcode] for barcode in picked_barcodes)
 
 def main(args):
     exp = bcdCT(args)
@@ -306,14 +309,25 @@ def main(args):
                     buffers[hit_barcode]["R2"].append(str(read2) + "\n")
 
             if n % flush_every == 0:
-                flush_buffers(buffers, exp.out_stack)               
+                flush_buffers(buffers, exp.out_stack)
+                if count_selected_barcode_reads(statistics, exp.picked_barcodes) == 0:
+                    sys.exit("*** Error: no reads matched the selected barcode(s) in the first {} reads: {}\n".format(
+                        n,
+                        ", ".join(exp.picked_barcodes)
+                    ))
 
         flush_buffers(buffers, exp.out_stack)
+
+    log("Finished demultiplexing {} reads. Statistics:\n{}".format(n, dict(statistics)))
 
     # Write the statistics file
     with open("{0}/{1}_{2}_statistics.yaml".format(exp.out_prefix,exp.name,exp.lane), 'w') as f:
         yaml.dump(statistics, f)
 
+    if count_selected_barcode_reads(statistics, exp.picked_barcodes) == 0:
+        sys.exit("*** Error: no reads matched the selected barcode(s): {}\n".format(
+            ", ".join(exp.picked_barcodes)
+        ))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="DESCRIPTION: \n\nThis script demultiplexes Nano-CT sequencing data by extracting and matching modality barcodes from the R2 read based on a specified spacer sequence.\nThe script supports both bulk and single-cell data and writes sorted reads into separate output files for each detected barcode""" + 
