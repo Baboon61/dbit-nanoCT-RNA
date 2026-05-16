@@ -324,14 +324,17 @@ rule seq_file_rename:
 rule debarcode:
   input:
     script = workflow.basedir + '/scripts/debarcode.py',
-    fastq = lambda wildcards: glob.glob(proc_dir + '{sample}/tmp_data/{sample}_{number}_{lane}_R[123]_{suffix}.{ext}' \
-      .format( \
+    fastq = lambda wildcards: [
+      proc_dir + '{sample}/tmp_data/{sample}_{number}_{lane}_R{read}_{suffix}.{ext}'.format(
         sample=wildcards.sample,
         number=wildcards.number,
         lane=wildcards.lane,
+        read=read,
         suffix=wildcards.suffix,
         ext=wildcards.ext
-      ),recursive=True),
+      )
+      for read in [1, 2, 3]
+    ],
     infile1 = lambda wildcards: proc_dir + '{sample}/tmp_data/{sample}_{number}_{lane}_{suffix}.{ext}_bc_process.done' \
       .format( \
         sample=wildcards.sample,
