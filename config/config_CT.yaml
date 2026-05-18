@@ -11,6 +11,7 @@ general:
   read_barcode: R2                                                                                                           # Modify which R file contains the barcodes in CutTag sample
   core: 2                                                                                                                    # Modify threads to use
   tempdir: /date/gcb/gcb_BH/Data/SCTYH/Test/Processed/tmp_CT/                                                                # Modify path to a tmp folder already created
+  fragtk_bin: /home/bastien/.cargo/bin/fragtk                                                                                # Modify the path to the fragtk executable
   cellranger:
     software_bin: /date/gcb/gcb_BH/cellranger_spatial/cellranger-atac-2.1.0/cellranger-atac                                  # Modify the path to cellranger CutTag binaries
     reference_path: /date/gcb/gcb_BH/cellranger_spatial/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/                          # Modify the path to cellranger CutTag reference

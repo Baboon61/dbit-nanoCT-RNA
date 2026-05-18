@@ -657,8 +657,10 @@ rule create_matrix_peaks:
         folder   = directory(proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_peaks/'),
         outfile = touch(proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_peaks.done'),
     conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
+    params:
+        fragtk = config['general']['fragtk_bin'],
     shell:
-        'fragtk matrix -f {input.frag} -b {input.peaks} -c {input.cells} -o {output.folder}'
+        '{params.fragtk} matrix -f {input.frag} -b {input.peaks} -c {input.cells} -o {output.folder}'
 
 rule create_matrix_bins:
     input:
@@ -677,11 +679,13 @@ rule create_matrix_bins:
         windows    = temp(proc_dir + '{sample}/{modality}_{barcode}/windows_{bins}.txt'),
         outfile    = touch(proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_bin_{bins}.done'),
     conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
+    params:
+        fragtk = config['general']['fragtk_bin'],
     shell:
         """
         samtools idxstats {input.bam} | awk '$2 != 0 {{print $1 "\t" $2}}' > {output.chromsizes};
-        bedtools makewindows -g {output.chromsizes} -w {wildcards.bins} > {output.windows}; 
-        fragtk matrix -f {input.frag} -b {output.windows} -c {input.cells} -o {output.folder}; 
+        bedtools makewindows -g {output.chromsizes} -w {wildcards.bins} > {output.windows};
+        {params.fragtk} matrix -f {input.frag} -b {output.windows} -c {input.cells} -o {output.folder};
         """
     
 rule create_genebody_and_promoter_matrix:
@@ -703,7 +707,8 @@ rule create_genebody_and_promoter_matrix:
     conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
     params:
         script = workflow.basedir + '/scripts/filter_cellranger_gtf_file.py',
+        fragtk = config['general']['fragtk_bin'],
     shell:
         'python3 {params.script} -i {input.cellranger_gtf} -o {output.genebody_gtf} -n {output.gene_names};'
         'cut -f 1,4,5 {output.genebody_gtf} > {output.genebody_bed};'
-        'fragtk matrix -f {input.frag} -b {output.genebody_bed} -c {input.cells} -o {output.folder}; '
+        '{params.fragtk} matrix -f {input.frag} -b {output.genebody_bed} -c {input.cells} -o {output.folder}; '
