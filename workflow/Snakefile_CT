@@ -637,7 +637,7 @@ rule spatial_barcodes_to_cells:
         cells = proc_dir + 'all_spatial_cells.txt',
         outfile = touch(proc_dir + 'all_spatial_cells.done'),
     shell:
-        "awk '{{print $1"-1"}}' {input.spatial_barcodes} > {output.cells}"
+        """awk '{{print $1"-1"}}' {input.spatial_barcodes} > {output.cells}"""
 
 rule create_matrix_peaks:
     # Requires fragtk installation (https://github.com/stuart-lab/fragtk)
