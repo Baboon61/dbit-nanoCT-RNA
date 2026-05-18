@@ -441,6 +441,7 @@ rule run_cellranger:
     infile2 = proc_dir + 'get_barcodes_cellranger.done'
   output:
     bam = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_bam.bam',
+    bai = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_bam.bam.bai',
     frag = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/fragments.tsv.gz',
     meta = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/singlecell.csv',
     peaks = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/peaks.bed',
@@ -547,6 +548,7 @@ rule sort_sinto_output:
 rule bam_to_bw:
     input:
         cellranger_bam = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_bam.bam',
+        cellranger_bai = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_bam.bam.bai',
         infile = proc_dir + '{sample}/{modality}_{barcode}/{sample}_run_cellranger.done',
     output:
         bigwig = proc_dir + '{sample}/{modality}_{barcode}/bigwig/all_reads.bw',
@@ -661,6 +663,7 @@ rule create_matrix_peaks:
 rule create_matrix_bins:
     input:
         bam   = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_bam.bam',
+        bai   = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_bam.bam.bai',
         frag  = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/fragments.tsv.gz',
         cells = proc_dir + 'all_spatial_cells.txt',
         infile1 = proc_dir + '{sample}/{modality}_{barcode}/{sample}_run_cellranger.done',
@@ -676,7 +679,7 @@ rule create_matrix_bins:
     conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
     shell:
         """
-        samtools idxstats {input.bam} | cut -f1-2 | awk '$2 != 0' > {output.chromsizes}; 
+        samtools idxstats {input.bam} | awk '$2 != 0 {{print $1 "\t" $2}}' > {output.chromsizes};
         bedtools makewindows -g {output.chromsizes} -w {wildcards.bins} > {output.windows}; 
         fragtk matrix -f {input.frag} -b {output.windows} -c {input.cells} -o {output.folder}; 
         """
