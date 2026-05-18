@@ -465,7 +465,7 @@ rule run_cellranger:
       --localmem={params.cellranger_mem}
     '''
 
-rule cellranger_bam_to_namesorted:
+rule bam_to_namesorted:
     input:
         bam = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_bam.bam',
         infile = proc_dir + '{sample}/{modality}_{barcode}/{sample}_run_cellranger.done',
@@ -544,7 +544,7 @@ rule sort_sinto_output:
         'sort -k1,1 -k2,2n {input.fragments} | bgzip > {output.fragments}; '
         'tabix -p bed {output.fragments} '
 
-rule bam_to_bw: # For QC reasons
+rule bam_to_bw:
     input:
         cellranger_bam = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_bam.bam',
         infile = proc_dir + '{sample}/{modality}_{barcode}/{sample}_run_cellranger.done',
@@ -637,7 +637,7 @@ rule spatial_barcodes_to_cells:
         cells = proc_dir + 'all_spatial_cells.txt',
         outfile = touch(proc_dir + 'all_spatial_cells.done'),
     shell:
-        "awk '{{print $1 \"-1\"}}' {input.spatial_barcodes} > {output.cells}"
+        "awk '{{print $1"-1"}}' {input.spatial_barcodes} > {output.cells}"
 
 rule create_matrix_peaks:
     # Requires fragtk installation (https://github.com/stuart-lab/fragtk)
