@@ -32,7 +32,7 @@ rule all:
       proc_dir + 'get_barcodes_cellranger.done'
     ],
     run_cellranger=[
-      proc_dir + '{sample}/cellranger/outs/possorted_genome_bam.bam'.format( \
+      proc_dir + '{sample}/{sample}_run_cellranger.done'.format( \
       sample=res['id']) \
       for sample_id in samples_list for res in get_fastq_info_from_folder(raw_dir, sample_id)
     ]
