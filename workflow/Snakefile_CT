@@ -384,8 +384,10 @@ rule get_barcodes_cellranger:
   output:
     cellranger_barcodes_file = config['general']['cellranger']['barcodes_path'] + config['general']['cellranger']['barcodes_file'],
     outfile = touch(proc_dir+'get_barcodes_cellranger.done')
+  params:
+    get_spatial_barcodes=workflow.basedir + '/scripts/awk/get_spatial_barcodes.awk',
   shell:
-    'awk "{{OFS="\\t"}};{{print \$1}}" {input.spatial_barcodes} | gzip -cvf - > {output.cellranger_barcodes_file};'
+    'awk -f {params.get_spatial_barcodes} {input.spatial_barcodes} | gzip -cvf - > {output.cellranger_barcodes_file};'
 
 #Run cellranger
 rule run_cellranger:
@@ -589,7 +591,7 @@ rule barcode_metrics_peaks:
         overlap=proc_dir + '{sample}/{modality}_{barcode}/barcode_metrics/peaks_barcodes.txt',
         outfile = touch(proc_dir + '{sample}/{modality}_{barcode}/barcode_metrics/peaks_barcodes.txt.done'),
     params:
-        get_cell_barcode=workflow.basedir + '/scripts/get_cell_barcode.awk',
+        get_cell_barcode=workflow.basedir + '/scripts/awk/get_cell_barcode.awk',
         tmpdir=config['general']['tempdir']
     conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
     resources:
@@ -607,7 +609,7 @@ rule barcode_metrics_all:
         all_bcd=proc_dir + '{sample}/{modality}_{barcode}/barcode_metrics/all_barcodes.txt',
         outfile = touch(proc_dir + '{sample}/{modality}_{barcode}/barcode_metrics/all_barcodes.txt.done'),
     params:
-        get_cell_barcode=workflow.basedir + '/scripts/get_cell_barcode.awk',
+        get_cell_barcode=workflow.basedir + '/scripts/awk/get_cell_barcode.awk',
         tmpdir=config['general']['tempdir']
     conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
     resources:
@@ -639,7 +641,7 @@ rule spatial_barcodes_to_cells:
         cells = proc_dir + 'all_spatial_cells.txt',
         outfile = touch(proc_dir + 'all_spatial_cells.done'),
     shell:
-        """awk '{{print $1"-1"}}' {input.spatial_barcodes} > {output.cells}"""
+        """sed 's/$/-1/' {input.spatial_barcodes} > {output.cells}"""
 
 rule create_matrix_peaks:
     # Requires fragtk installation (https://github.com/stuart-lab/fragtk)
@@ -680,10 +682,11 @@ rule create_matrix_bins:
         outfile    = touch(proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_bin_{bins}.done'),
     conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
     params:
+        get_chrom_sizes = workflow.basedir + '/scripts/awk/get_chrom_sizes.awk',
         fragtk = config['general']['fragtk_bin'],
     shell:
         """
-        samtools idxstats {input.bam} | awk '$2 != 0 {{print $1 "\t" $2}}' > {output.chromsizes};
+        samtools idxstats {input.bam} | awk {params.get_chrom_sizes} > {output.chromsizes};
         bedtools makewindows -g {output.chromsizes} -w {wildcards.bins} > {output.windows};
         {params.fragtk} matrix -f {input.frag} -b {output.windows} -c {input.cells} -o {output.folder};
         """
