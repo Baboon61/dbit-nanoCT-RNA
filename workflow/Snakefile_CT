@@ -655,9 +655,6 @@ rule create_matrix_peaks:
         infile2 = proc_dir + '{sample}/{modality}_{barcode}/peaks/macs_broad/{modality}_peaks.broadPeak.done',
         infile3 = proc_dir + 'all_spatial_cells.done',
     output:
-        features = proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_peaks/features.tsv.gz',
-        matrix   = proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_peaks/matrix.mtx.gz',
-        barcodes = proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_peaks/barcodes.tsv',
         folder   = directory(proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_peaks/'),
         outfile = touch(proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_peaks.done'),
     conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
@@ -677,9 +674,6 @@ rule create_matrix_bins:
         infile1 = proc_dir + '{sample}/{modality}_{barcode}/{sample}_run_cellranger.done',
         infile2 = proc_dir + 'all_spatial_cells.done',
     output:
-        features   = proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_bin_{bins}/features.tsv.gz',
-        matrix     = proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_bin_{bins}/matrix.mtx.gz',
-        barcodes   = proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_bin_{bins}/barcodes.tsv',
         folder     = directory(proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_bin_{bins}/'),
         chromsizes = temp(proc_dir + '{sample}/{modality}_{barcode}/chromsizes_{bins}.txt'),
         windows    = temp(proc_dir + '{sample}/{modality}_{barcode}/windows_{bins}.txt'),
@@ -708,9 +702,6 @@ rule create_genebody_and_promoter_matrix:
         genebody_gtf = proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_genes/genebody_and_promoter.gtf',
         genebody_bed = proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_genes/genebody_and_promoter.bed',
         gene_names   = proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_genes/gene_names.txt',
-        features     = proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_genes/features.tsv.gz',
-        matrix       = proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_genes/matrix.mtx.gz',
-        barcodes     = proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_genes/barcodes.tsv',
         folder       = directory(proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_genes/'),
         outfile      = touch(proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_genes.done'),
     conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
