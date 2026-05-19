@@ -1,6 +1,7 @@
 import sys
 import argparse
 import gzip
+import os
 
 parser = argparse.ArgumentParser(description='Filter cellranger gtf file and return genebody and promter gtf file and separate file with gene names')
 parser.add_argument('-i','--input', type=str, help='GTF file')
@@ -40,6 +41,12 @@ def main(args):
         gtf = gzip.open(args.input, "rt")
     else:
         gtf = open(args.input, "r")
+
+    for output_file in [args.output, args.gene_names]:
+        output_dir = os.path.dirname(output_file)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+
     with open(args.output, "w") as out, open(args.gene_names, "w") as gene_names:
         for line in gtf:
             if line.startswith("#"):
