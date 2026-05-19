@@ -640,8 +640,10 @@ rule spatial_barcodes_to_cells:
     output:
         cells = proc_dir + 'all_spatial_cells.txt',
         outfile = touch(proc_dir + 'all_spatial_cells.done'),
+    params:
+        add_1_to_cells = workflow.basedir + '/scripts/awk/add_1_to_cells.awk'
     shell:
-        """sed 's/$/-1/' {input.spatial_barcodes} > {output.cells}"""
+        'awk -f {params.add_1_to_cells.awk} {input.spatial_barcodes} > {output.cells}'
 
 rule create_matrix_peaks:
     # Requires fragtk installation (https://github.com/stuart-lab/fragtk)
