@@ -643,7 +643,7 @@ rule spatial_barcodes_to_cells:
     params:
         add_1_to_cells = workflow.basedir + '/scripts/awk/add_1_to_cells.awk'
     shell:
-        'awk -f {params.add_1_to_cells.awk} {input.spatial_barcodes} > {output.cells}'
+        'awk -f {params.add_1_to_cells} {input.spatial_barcodes} > {output.cells}'
 
 rule create_matrix_peaks:
     # Requires fragtk installation (https://github.com/stuart-lab/fragtk)
@@ -665,7 +665,7 @@ rule create_matrix_peaks:
         matrix_dir = proc_dir + '{sample}/{modality}_{barcode}/matrix/',
         fragtk = config['general']['fragtk_bin'],
     shell:
-        'mkdir -p {params.matrix_dir}; '
+        'mkdir -p {params.matrix_dir};'
         '{params.fragtk} matrix -f {input.frag} -b {input.peaks} -c {input.cells} -o {output.folder}'
 
 rule create_matrix_bins:
