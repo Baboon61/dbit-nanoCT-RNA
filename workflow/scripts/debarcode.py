@@ -244,7 +244,7 @@ def main(args):
             for barcode in exp.picked_barcodes
         }
 
-        flush_every = 100000
+        flush_every = args.flush_every
 
         n = 0
         sys.stderr.write("Starting demultiplexing \n")
@@ -310,11 +310,18 @@ def main(args):
 
             if n % flush_every == 0:
                 flush_buffers(buffers, exp.out_stack)
-                if count_selected_barcode_reads(statistics, exp.picked_barcodes) == 0:
-                    sys.exit("*** Error: no reads matched the selected barcode(s) in the first {} reads: {}\n".format(
-                        n,
-                        ", ".join(exp.picked_barcodes)
-                    ))
+                if n == flush_every:
+                    selected_reads = count_selected_barcode_reads(statistics, exp.picked_barcodes)
+                    selected_ratio = selected_reads / n
+                    if selected_ratio < args.min_first_flush_ratio:
+                        sys.exit("*** Error: only {} / {} reads ({:.6f}) matched the selected barcode(s) in the first flush: {}.\n"
+                                 "Minimum required by --min_first_flush_ratio is {:.6f}.\n".format(
+                            selected_reads,
+                            n,
+                            selected_ratio,
+                            ", ".join(exp.picked_barcodes),
+                            args.min_first_flush_ratio
+                        ))
 
         flush_buffers(buffers, exp.out_stack)
 
@@ -386,6 +393,16 @@ if __name__ == '__main__':
                         default='None',
                         help='Specific barcode to be extracted [e.g. ATAGAGGC] (Default: All barcodes [see --Nbarcodes])')
 
+    parser.add_argument('--flush_every',
+                        type=int,
+                        default=100000,
+                        help='Number of reads to buffer before writing outputs and checking the first-flush barcode ratio (Default: %(default)s)')
+
+    parser.add_argument('--min_first_flush_ratio',
+                        type=float,
+                        default=0.00001,
+                        help='Minimum selected-barcode read ratio required after the first flush (Default: %(default)s)')
+
     parser.add_argument('--no_barcode_seq', type=str, 
                         default='GTGTAGATCTCGGTGGTCGCCGTATCATT', 
                         help='Sequence indicating unbarcoded reads')
@@ -402,6 +419,10 @@ if __name__ == '__main__':
 
 
     args = parser.parse_args()
+    if args.flush_every <= 0:
+        parser.error("--flush_every must be a positive integer")
+    if args.min_first_flush_ratio < 0 or args.min_first_flush_ratio > 1:
+        parser.error("--min_first_flush_ratio must be between 0 and 1")
     log("Starting debarcode.py script ")
     log("Input files: \n{}".format("".join(["    " + i + "\n" for i in args.input])))
     if args.barcode != "None":

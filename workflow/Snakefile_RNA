@@ -30,6 +30,9 @@ rule all:
     run_cellranger=[
       sample_done(sample_id, 'run_cellranger') \
       for sample_id in samples_list
+    ],
+    restore_cellranger_barcodes=[
+      global_done('restore_cellranger_barcodes')
     ]
 
 include: 'Snakefile_spatial_demux.smk'
@@ -83,11 +86,37 @@ rule get_barcodes_cellranger:
   input:
     spatial_barcodes = config['general']['spatial_barcodes_file'],
   output:
-    cellranger_barcodes_file = config['general']['cellranger']['barcodes_path'] + config['general']['cellranger']['barcodes_file'],
+    backup = cellranger_barcodes_backup(),
     outfile = touch(global_done('get_barcodes_cellranger'))
+  params:
+    script = workflow.basedir + '/scripts/replace_cellranger_barcodes.py',
+    cellranger_barcodes_file = cellranger_barcodes_path()
   shell:
-    'awk "{{OFS="\\t"}};{{print \$1}}" {input.spatial_barcodes} | gzip -cvf - > {output.cellranger_barcodes_file};'
+    '''
+    python3 {params.script} \
+      --spatial-barcodes {input.spatial_barcodes} \
+      --cellranger-barcodes {params.cellranger_barcodes_file} \
+      --backup {output.backup}
+    '''
 
+rule restore_cellranger_barcodes:
+  input:
+    backup = cellranger_barcodes_backup(),
+    run_cellranger = [
+      sample_done(sample_id, 'run_cellranger') \
+      for sample_id in samples_list
+    ]
+  output:
+    outfile = touch(global_done('restore_cellranger_barcodes'))
+  params:
+    script = workflow.basedir + '/scripts/restore_cellranger_barcodes.py',
+    cellranger_barcodes_file = cellranger_barcodes_path()
+  shell:
+    '''
+    python3 {params.script} \
+      --cellranger-barcodes {params.cellranger_barcodes_file} \
+      --backup {input.backup}
+    '''
 
 #Run cellranger
 rule run_cellranger:
@@ -105,7 +134,8 @@ rule run_cellranger:
     cellranger_ref = config['general']['cellranger']['reference_path'],
     processed_dir = proc_dir,
     cellranger_mem = config['general']['cellranger']['mem'],
-    fastq_folder = proc_dir + '{sample}/tmp_data/'
+    fastq_folder = proc_dir + '{sample}/tmp_data/',
+    check_outputs = workflow.basedir + '/scripts/check_outputs.py'
   threads: config['general']['cellranger']['core']
   shell:
     '''
@@ -119,4 +149,5 @@ rule run_cellranger:
       --sample={wildcards.sample} \
       --localcores={threads} \
       --localmem={params.cellranger_mem}
+    python3 {params.check_outputs} {output.bam}
     '''

@@ -1,5 +1,6 @@
 from Bio.SeqIO.QualityIO import FastqGeneralIterator
 import gzip
+import sys
 
 import argparse
 
@@ -47,6 +48,11 @@ bc_umi_end=bc_umi_start+umi_barcode_length-1
 
 with open_maybe_gzip(input_file, "rt") as in_handle, open_maybe_gzip(output_file, "wt") as out_handle:
     for title, seq, qual in FastqGeneralIterator(in_handle):
+        if len(seq) < seq_start or len(qual) < seq_start:
+            sys.exit("*** Error: read '{}' is too short for configured barcode structure.\n"
+                     "Need at least {} bases but found sequence length {} and quality length {}.\n".format(
+                         title, seq_start, len(seq), len(qual)
+                     ))
     
         pxl_bcd_seq = seq[bc2_start-1:bc2_end] + seq[bc1_start-1:bc1_end] # !!! BC2 + BC1
         pxl_bcd_qual = qual[bc2_start-1:bc2_end] + qual[bc1_start-1:bc1_end]

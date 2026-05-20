@@ -10,6 +10,16 @@ general:
   spatial_barcodes_file: barcodes/spatial_barcodes_10000.txt                                                                 # Modify the path to the spatial barcodes file for your sample (Maybe 10000 or 5000 barcodes)
   read_barcode: R2                                                                                                           # Modify which R file contains the barcodes in CutTag sample
   core: 2                                                                                                                    # Modify threads to use
+  samtools_threads: 20                                                                                                       # Modify threads for samtools/sort rules
+  sinto_threads: 20                                                                                                          # Modify threads for sinto fragments
+  bamcoverage_threads: 20                                                                                                    # Modify threads for bamCoverage
+  samtools_mem_mb: 32000                                                                                                     # Modify memory for samtools/sort rules
+  sinto_mem_mb: 16000                                                                                                        # Modify memory for sinto fragments
+  bamcoverage_mem_mb: 16000                                                                                                  # Modify memory for bamCoverage
+  macs_mem_mb: 16000                                                                                                         # Modify memory for MACS2
+  remove_LA_duplicates_mem_mb: 32000                                                                                         # Modify memory for LA duplicate removal
+  debarcode_flush_every: 100000                                                                                              # Number of reads between debarcode output flushes
+  min_first_flush_ratio: 0.00001                                                                                             # Minimum selected-barcode read ratio required during the first debarcode flush
   tempdir: /date/gcb/gcb_BH/Data/SCTYH/Test/Processed/tmp_CT/                                                                # Modify path to a tmp folder already created
   fragtk_bin: /home/bastien/.cargo/bin/fragtk                                                                                # Modify the path to the fragtk executable
   cellranger:

@@ -1,4 +1,7 @@
-def get_fastq_info_from_folder(fastq_folder,sample):
+from functools import lru_cache
+
+@lru_cache(maxsize=None)
+def get_fastq_info_from_folder(fastq_folder, sample):
     import glob
     all_fastq_files = []
     all_fastq_files.extend(glob.glob(fastq_folder + "/" + sample + "/**/*.fastq.gz", recursive=True))
@@ -7,7 +10,7 @@ def get_fastq_info_from_folder(fastq_folder,sample):
     all_fastq_files.extend(glob.glob(fastq_folder + "/" + sample + "/**/*.fq", recursive=True))
     all_fastq_files = sorted(all_fastq_files)
     all_fastq_parsed = [parse_fastq(x) for x in all_fastq_files]
-    return(all_fastq_parsed)
+    return all_fastq_parsed
 
 def parse_fastq(path):
     import os

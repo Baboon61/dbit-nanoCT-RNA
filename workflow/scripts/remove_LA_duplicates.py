@@ -33,8 +33,8 @@ stats = {
 }
 
 n = 0
-# n_target = 1000000  # test for 1 milion reads
-# n_target = 10000000 # test for 10 milion reads
+# n_target = 1000000  # test for 1 million reads
+# n_target = 10000000 # test for 10 million reads
 
 read1 = False
 read2 = False

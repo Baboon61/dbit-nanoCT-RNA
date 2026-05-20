@@ -35,6 +35,35 @@ def tmp_fastq(sample, number, lane, read, suffix, ext):
 def tmp_done(sample, number, lane, suffix, ext, step):
   return sample_lane_done(sample, number, lane, suffix, ext, step)
 
+def ct_debarcoded_fastq(sample, modality, barcode, number, lane, read, suffix, ext):
+  return proc_dir + '{sample}/{modality}_{barcode}/fastq/barcode_{barcode}/{sample}_{number}_{lane}_{read}_{suffix}.{ext}'.format(
+    sample=sample,
+    modality=modality,
+    barcode=barcode,
+    number=number,
+    lane=lane,
+    read=read,
+    suffix=suffix,
+    ext=ext
+  )
+
+def matrix_tmp_dir(sample, modality, barcode, matrix_name):
+  return proc_dir + '{sample}/{modality}_{barcode}/matrix/.{matrix_name}.tmp/'.format(
+    sample=sample,
+    modality=modality,
+    barcode=barcode,
+    matrix_name=matrix_name
+  )
+
+def cellranger_barcodes_path():
+  return config['general']['cellranger']['barcodes_path'] + config['general']['cellranger']['barcodes_file']
+
+def cellranger_barcodes_backup():
+  backup_name = config['general']['cellranger']['barcodes_file'].replace('/', '_')
+  return proc_dir + '.done/cellranger_{backup_name}.original'.format(
+    backup_name=backup_name
+  )
+
 def sample_done(sample, name):
   return proc_dir + '{sample}/.done/{name}.done'.format(
     sample=sample,

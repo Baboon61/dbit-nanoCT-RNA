@@ -92,7 +92,7 @@ cutoff_penalty = max(best_read_penalty_dict.values())
 percent_read_kept = len(best_read_penalty_dict.keys())*100/len(read_penalty_dict.keys())
 print("A barcode penalty score of maximum %i was set to extract %f of the reads" % (cutoff_penalty, percent_read_kept))
 
-print("A violin plot of the barcodes penalty will be outputed at the output file location")
+print("A violin plot of the barcodes penalty will be output at the output file location")
 plt.violinplot(read_penalty_dict.values(), showmedians=True, quantiles=[0.25, 0.75])
 plt.ylabel("Barcode penalty score", fontsize=10)
 plt.title("Distribution of barcodes penalty score over a fastq file", fontsize=10)
