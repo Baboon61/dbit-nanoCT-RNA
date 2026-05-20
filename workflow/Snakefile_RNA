@@ -25,11 +25,10 @@ rule all:
       for sample_id in samples_list for res in get_fastq_info_from_folder(raw_dir, sample_id)
     ],
     get_barcodes_cellranger=[
-      proc_dir + 'get_barcodes_cellranger.done'
+      global_done('get_barcodes_cellranger')
     ],
     run_cellranger=[
-      proc_dir + '{sample}/{sample}_run_cellranger.done'.format( \
-      sample=sample_id) \
+      sample_done(sample_id, 'run_cellranger') \
       for sample_id in samples_list
     ]
 
@@ -85,7 +84,7 @@ rule get_barcodes_cellranger:
     spatial_barcodes = config['general']['spatial_barcodes_file'],
   output:
     cellranger_barcodes_file = config['general']['cellranger']['barcodes_path'] + config['general']['cellranger']['barcodes_file'],
-    outfile = touch(proc_dir+'get_barcodes_cellranger.done')
+    outfile = touch(global_done('get_barcodes_cellranger'))
   shell:
     'awk "{{OFS="\\t"}};{{print \$1}}" {input.spatial_barcodes} | gzip -cvf - > {output.cellranger_barcodes_file};'
 
@@ -97,10 +96,10 @@ rule run_cellranger:
     in2 = lambda wildcards: [tmp_fastq(res['id'], res['number'], res['lane'], 'R2', res['suffix'], res['ext']) for res in get_fastq_info_from_folder(raw_dir, wildcards.sample)],
     infile1 = lambda wildcards: [tmp_done(res['id'], res['number'], res['lane'], res['suffix'], res['ext'], 'bc_process') for res in get_fastq_info_from_folder(raw_dir, wildcards.sample)],
     infile2 = lambda wildcards: [tmp_done(res['id'], res['number'], res['lane'], res['suffix'], res['ext'], 'seq_file_rename') for res in get_fastq_info_from_folder(raw_dir, wildcards.sample)],
-    infile3 = proc_dir+'get_barcodes_cellranger.done'
+    infile3 = global_done('get_barcodes_cellranger')
   output:
     bam = proc_dir + '{sample}/cellranger/outs/possorted_genome_bam.bam',
-    outfile = touch(proc_dir + '{sample}/{sample}_run_cellranger.done')
+    outfile = touch(sample_done('{sample}', 'run_cellranger'))
   params:
     cellranger_software = config['general']['cellranger']['software_bin'],
     cellranger_ref = config['general']['cellranger']['reference_path'],
