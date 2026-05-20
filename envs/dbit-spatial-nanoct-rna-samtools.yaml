@@ -6,10 +6,4 @@ channels:
 dependencies:
   - python=3.11
   - bedtools
-  - biopython
-  - cxx-compiler
-  - htslib
-  - pkg-config
-  - pysam
-  - rust
   - samtools

@@ -19,6 +19,86 @@ def validate_executable(path, config_key):
   if not os.access(path, os.X_OK):
     sys.exit("*** Error: {} is not executable: {}\n".format(config_key, path))
 
+def require_config_keys(container, required_keys, config_key):
+  missing_keys = [key for key in required_keys if key not in container]
+  if missing_keys:
+    sys.exit("*** Error: missing required config key(s) under {}: {}\n".format(
+      config_key,
+      ", ".join(missing_keys)
+    ))
+
+def validate_positive_int(value, config_key):
+  if not isinstance(value, int) or value <= 0:
+    sys.exit("*** Error: {} must be a positive integer, got: {}\n".format(config_key, value))
+
+def validate_nonnegative_int(value, config_key):
+  if not isinstance(value, int) or value < 0:
+    sys.exit("*** Error: {} must be a non-negative integer, got: {}\n".format(config_key, value))
+
+def validate_ratio(value, config_key):
+  if not isinstance(value, (int, float)) or value < 0 or value > 1:
+    sys.exit("*** Error: {} must be a number between 0 and 1, got: {}\n".format(config_key, value))
+
+def with_trailing_slash(path):
+  return path if path[-1] == '/' else path + '/'
+
+def get_read_layout():
+  if config['general']['read_barcode'] == "R1":
+    return "f", "t", "R1", "R2"
+  if config['general']['read_barcode'] == "R2":
+    return "t", "f", "R2", "R1"
+  sys.exit("*** Error: general.read_barcode must be either R1 or R2.\n")
+
+def validate_general_config_schema(modality):
+  required_general = [
+    'rawData_dir',
+    'processedData_dir',
+    'spatial_barcodes_file',
+    'read_barcode',
+    'core',
+    'tempdir',
+    'cellranger',
+    'PCRprimer_sequence',
+    'linker1_sequence',
+    'linker2_sequence',
+    'spatial_barcode1_length',
+    'spatial_barcode2_length',
+    'hamming_distance_linkers'
+  ]
+  require_config_keys(config, ['samples'], 'root')
+  require_config_keys(config['general'], required_general, 'general')
+  require_config_keys(config['general']['cellranger'], ['software_bin', 'reference_path', 'barcodes_path', 'barcodes_file', 'core', 'mem'], 'general.cellranger')
+
+  if config['general']['read_barcode'] not in ['R1', 'R2']:
+    sys.exit("*** Error: general.read_barcode must be either R1 or R2.\n")
+
+  validate_positive_int(config['general']['core'], 'general.core')
+  validate_positive_int(config['general']['cellranger']['core'], 'general.cellranger.core')
+  validate_positive_int(config['general']['cellranger']['mem'], 'general.cellranger.mem')
+  validate_positive_int(config['general']['spatial_barcode1_length'], 'general.spatial_barcode1_length')
+  validate_positive_int(config['general']['spatial_barcode2_length'], 'general.spatial_barcode2_length')
+  validate_nonnegative_int(config['general']['hamming_distance_linkers'], 'general.hamming_distance_linkers')
+
+  if modality == 'CT':
+    require_config_keys(config['general'], ['fragtk_bin', 'adapt_Tn5', 'nanoCutTag_barcode_length', 'macs_genome', 'bin_sizes'], 'general')
+    validate_positive_int(config['general']['nanoCutTag_barcode_length'], 'general.nanoCutTag_barcode_length')
+    for key in ['samtools_threads', 'sinto_threads', 'bamcoverage_threads', 'debarcode_threads', 'debarcode_chunk_size', 'debarcode_flush_every']:
+      if key in config['general']:
+        validate_positive_int(config['general'][key], 'general.{}'.format(key))
+    for key in ['samtools_mem_mb', 'sinto_mem_mb', 'bamcoverage_mem_mb', 'macs_mem_mb', 'remove_LA_duplicates_mem_mb']:
+      if key in config['general']:
+        validate_positive_int(config['general'][key], 'general.{}'.format(key))
+    if 'min_first_flush_ratio' in config['general']:
+      validate_ratio(config['general']['min_first_flush_ratio'], 'general.min_first_flush_ratio')
+    if not isinstance(config['general']['bin_sizes'], list) or not config['general']['bin_sizes']:
+      sys.exit("*** Error: general.bin_sizes must be a non-empty list of positive integers.\n")
+    for binsize in config['general']['bin_sizes']:
+      validate_positive_int(binsize, 'general.bin_sizes')
+
+  if modality == 'RNA':
+    require_config_keys(config['general'], ['umi_barcode_length'], 'general')
+    validate_positive_int(config['general']['umi_barcode_length'], 'general.umi_barcode_length')
+
 # Output and temp directories are created early so failures happen before jobs run.
 def ensure_writable_directory(path, config_key):
   try:

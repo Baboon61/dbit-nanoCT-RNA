@@ -17,7 +17,8 @@ python3 -m py_compile \
   workflow/scripts/filter_cellranger_gtf_file.py \
   workflow/scripts/remove_LA_duplicates.py \
   workflow/scripts/replace_cellranger_barcodes.py \
-  workflow/scripts/restore_cellranger_barcodes.py
+  workflow/scripts/restore_cellranger_barcodes.py \
+  workflow/scripts/write_pipeline_summary.py
 
 # Build the CT and RNA DAGs without running jobs.
 snakemake -n -s workflow/Snakefile_CT --use-conda

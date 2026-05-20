@@ -1,6 +1,8 @@
 from Bio.SeqIO.QualityIO import FastqGeneralIterator
 import gzip
 import sys
+import json
+import os
 
 import argparse
 
@@ -19,6 +21,7 @@ ap = argparse.ArgumentParser()
 ap.add_argument("-i", "--input", required=True, help="input file")
 ap.add_argument("-o1", "--output_R1", required=True, help="output file R1")
 ap.add_argument("-o2", "--output_R2", required=True, help="output file R2")
+ap.add_argument("--stats", required=False, help="optional JSON stats output")
 ap.add_argument("-p", "--primer_length", required=True, help="PCR primer sequence length", type=check_positive)
 ap.add_argument("-l1", "--linker1_length", required=True, help="linker1 sequence length", type=check_positive)
 ap.add_argument("-l2", "--linker2_length", required=True, help="linker2 sequence length", type=check_positive)
@@ -53,8 +56,11 @@ bc_nano_end=bc_nano_start+nanoCT_barcode_length-1
 adapt_tn5_start=bc_nano_end+1
 adapt_tn5_end=adapt_tn5_start+adapt_tn5_length-1
 
+stats = {"reads_processed": 0, "reads_written": 0}
+
 with open_maybe_gzip(input_file, "rt") as in_handle, open_maybe_gzip(output_file_R1, "wt") as out_handle_R1, open_maybe_gzip(output_file_R2, "wt") as out_handle_R2:
     for title, seq, qual in FastqGeneralIterator(in_handle):
+        stats["reads_processed"] += 1
         if len(seq) < seq_start or len(qual) < seq_start:
             sys.exit("*** Error: read '{}' is too short for configured barcode structure.\n"
                      "Need at least {} bases but found sequence length {} and quality length {}.\n".format(
@@ -78,3 +84,12 @@ with open_maybe_gzip(input_file, "rt") as in_handle, open_maybe_gzip(output_file
              
         out_handle_R1.write("@%s\n%s\n+\n%s\n" % (title, new_seq, new_qual))
         out_handle_R2.write("@%s\n%s\n+\n%s\n" % (title, nano_full_seq, nano_full_qual))
+        stats["reads_written"] += 1
+
+if args.get("stats"):
+    stats_dir = os.path.dirname(args["stats"])
+    if stats_dir:
+        os.makedirs(stats_dir, exist_ok=True)
+    with open(args["stats"], "w") as stats_handle:
+        json.dump(stats, stats_handle, indent=2, sort_keys=True)
+        stats_handle.write("\n")

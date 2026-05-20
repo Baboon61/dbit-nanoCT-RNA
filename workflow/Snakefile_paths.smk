@@ -43,6 +43,16 @@ def tmp_fastq(sample, number, lane, read, suffix, ext):
 def tmp_done(sample, number, lane, suffix, ext, step):
   return sample_lane_done(sample, number, lane, suffix, ext, step)
 
+def tmp_stats(sample, number, lane, suffix, ext, step):
+  return proc_dir + '{sample}/tmp_data/stats/{sample}_{number}_{lane}_{step}_{suffix}.{ext}.json'.format(
+    sample=sample,
+    number=number,
+    lane=lane,
+    suffix=suffix,
+    ext=ext,
+    step=step
+  )
+
 # One CT sample can contain multiple modalities/barcodes, each with its own folder.
 def ct_modality_dir(sample, modality, barcode):
   return proc_dir + '{sample}/{modality}_{barcode}'.format(
@@ -196,6 +206,31 @@ def modality_log(sample, modality, barcode, name):
 
 def modality_lane_log(sample, modality, barcode, number, lane, suffix, ext, name):
   return ct_modality_dir(sample, modality, barcode) + '/logs/{name}_{number}_{lane}_{suffix}.{ext}.log'.format(
+    number=number,
+    lane=lane,
+    suffix=suffix,
+    ext=ext,
+    name=name
+  )
+
+def global_report(name):
+  return proc_dir + 'reports/{name}'.format(
+    name=name
+  )
+
+def sample_benchmark(sample, name):
+  return proc_dir + '{sample}/benchmarks/{name}.txt'.format(
+    sample=sample,
+    name=name
+  )
+
+def modality_benchmark(sample, modality, barcode, name):
+  return ct_modality_dir(sample, modality, barcode) + '/benchmarks/{name}.txt'.format(
+    name=name
+  )
+
+def modality_lane_benchmark(sample, modality, barcode, number, lane, suffix, ext, name):
+  return ct_modality_dir(sample, modality, barcode) + '/benchmarks/{name}_{number}_{lane}_{suffix}.{ext}.txt'.format(
     number=number,
     lane=lane,
     suffix=suffix,

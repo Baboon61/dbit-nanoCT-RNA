@@ -19,6 +19,8 @@ general:
   macs_mem_mb: 16000                                                                                                         # Modify memory for MACS2
   remove_LA_duplicates_mem_mb: 32000                                                                                         # Modify memory for LA duplicate removal
   debarcode_flush_every: 100000                                                                                              # Number of reads between debarcode output flushes
+  debarcode_threads: 1                                                                                                       # Worker processes for debarcode.py chunk processing
+  debarcode_chunk_size: 10000                                                                                                # Read triplets per debarcode.py worker chunk
   min_first_flush_ratio: 0.00001                                                                                             # Minimum selected-barcode read ratio required during the first debarcode flush
   tempdir: /date/gcb/gcb_BH/Data/SCTYH/Test/Processed/tmp_CT/                                                                # Modify path to a tmp folder already created
   fragtk_bin: /home/bastien/.cargo/bin/fragtk                                                                                # Modify the path to the fragtk executable

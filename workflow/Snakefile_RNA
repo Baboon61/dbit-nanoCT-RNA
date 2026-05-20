@@ -1,6 +1,11 @@
 include: 'Snakefile_prep_RNA.smk'
 include: 'Snakefile_paths.smk'
 
+cellranger_done_targets = [
+  sample_done(sample_id, 'run_cellranger') \
+  for sample_id in samples_list
+]
+
 # Final RNA targets. Done files are used as completion gatekeepers.
 rule all:
   input:
@@ -27,15 +32,16 @@ rule all:
     get_barcodes_cellranger=[
       global_done('get_barcodes_cellranger')
     ],
-    run_cellranger=[
-      sample_done(sample_id, 'run_cellranger') \
-      for sample_id in samples_list
-    ],
+    run_cellranger=cellranger_done_targets,
     restore_cellranger_barcodes=[
       global_done('restore_cellranger_barcodes')
+    ],
+    pipeline_summary=[
+      global_done('pipeline_summary')
     ]
 
 include: 'Snakefile_spatial_demux.smk'
+include: 'Snakefile_cellranger_whitelist.smk'
 
 # Build the RNA R1 read containing spatial barcode plus UMI.
 rule bc_process:
@@ -45,6 +51,7 @@ rule bc_process:
     infile = lambda wildcards: qc_done(wildcards.sample, wildcards.number, wildcards.lane, wildcards.suffix, wildcards.ext, 'filter_L2')
   output:
     out1 = tmp_fastq('{sample}', '{number}', '{lane}', 'R1', '{suffix}', '{ext}'),
+    stats = tmp_stats('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'bc_process'),
     outfile = touch(tmp_done('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'bc_process'))
   log:
     sample_lane_log('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'bc_process')
@@ -67,6 +74,7 @@ rule bc_process:
     --spatial_barcode1_length {params.spatial_barcode1_length} \
     --spatial_barcode2_length {params.spatial_barcode2_length} \
     --umi_barcode_length {params.umi_barcode_length} \
+    --stats {output.stats} \
     > {log} 2>&1
     '''
 
@@ -85,48 +93,6 @@ rule seq_file_rename:
     cp {input.in1} {output.out1} > {log} 2>&1
     '''
 
-# Temporarily replace Cell Ranger's barcode whitelist with the spatial whitelist.
-rule get_barcodes_cellranger:
-  input:
-    spatial_barcodes = config['general']['spatial_barcodes_file'],
-  output:
-    backup = cellranger_barcodes_backup(),
-    outfile = touch(global_done('get_barcodes_cellranger'))
-  log:
-    global_log('get_barcodes_cellranger')
-  params:
-    script = workflow.basedir + '/scripts/replace_cellranger_barcodes.py',
-    cellranger_barcodes_file = cellranger_barcodes_path()
-  shell:
-    '''
-    python3 {params.script} \
-      --spatial-barcodes {input.spatial_barcodes} \
-      --cellranger-barcodes {params.cellranger_barcodes_file} \
-      --backup {output.backup} > {log} 2>&1
-    '''
-
-# Restore the original Cell Ranger whitelist after all RNA Cell Ranger jobs finish.
-rule restore_cellranger_barcodes:
-  input:
-    backup = cellranger_barcodes_backup(),
-    run_cellranger = [
-      sample_done(sample_id, 'run_cellranger') \
-      for sample_id in samples_list
-    ]
-  output:
-    outfile = touch(global_done('restore_cellranger_barcodes'))
-  log:
-    global_log('restore_cellranger_barcodes')
-  params:
-    script = workflow.basedir + '/scripts/restore_cellranger_barcodes.py',
-    cellranger_barcodes_file = cellranger_barcodes_path()
-  shell:
-    '''
-    python3 {params.script} \
-      --cellranger-barcodes {params.cellranger_barcodes_file} \
-      --backup {input.backup} > {log} 2>&1
-    '''
-
 # Run Cell Ranger RNA using the processed R1/R2 FASTQs.
 rule run_cellranger:
   input:
@@ -140,6 +106,8 @@ rule run_cellranger:
     outfile = touch(sample_done('{sample}', 'run_cellranger'))
   log:
     sample_log('{sample}', 'run_cellranger')
+  benchmark:
+    sample_benchmark('{sample}', 'run_cellranger')
   params:
     cellranger_software = config['general']['cellranger']['software_bin'],
     cellranger_ref = config['general']['cellranger']['reference_path'],
@@ -163,4 +131,21 @@ rule run_cellranger:
       --localmem={params.cellranger_mem}
     python3 {params.check_outputs} {output.bam}
     }} > {log} 2>&1
+    '''
+
+# Write a compact JSON report containing config, samples, and available tool versions.
+rule pipeline_summary:
+  input:
+    run_cellranger=cellranger_done_targets
+  output:
+    report = global_report('pipeline_summary_RNA.json'),
+    outfile = touch(global_done('pipeline_summary'))
+  log:
+    global_log('pipeline_summary')
+  params:
+    script = workflow.basedir + '/scripts/write_pipeline_summary.py',
+    config_file = workflow.basedir + '/../config/config_RNA.yaml'
+  shell:
+    '''
+    python3 {params.script} --config {params.config_file} --workflow RNA --output {output.report} > {log} 2>&1
     '''

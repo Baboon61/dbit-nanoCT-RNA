@@ -82,25 +82,18 @@ while True:
     except KeyError:
         sys.exit("*** Error: read '{}' is missing the CR cell-barcode tag.\n"
                  "Expected Cell Ranger ATAC-style BAM tags.\n".format(read1.query_name))
-    read1_position = '{}_{}_{}'.format(read1.reference_name, + read1.reference_start, cell_barcode)
-    read2_position = '{}_{}_{}'.format(read1.next_reference_name, + read1.next_reference_start, cell_barcode)
+    read1_position = (read1.reference_name, read1.reference_start, cell_barcode)
+    read2_position = (read1.next_reference_name, read1.next_reference_start, cell_barcode)
 
-    try:  # Creates new fw read entry in the dictionary if not there. # Dict is a lot faster if indexed only by string and not whole AlignedSegment object
-        reads_unique[read1_position]
-    except KeyError:
-        reads_unique[read1_position] = []
-
-    # Case1 read2_position list is empty == new read is observed             == new unique read
-    if reads_unique[read1_position] == []:
-        reads_unique[read1_position].append(read2_position)
+    if read1_position not in reads_unique:
+        reads_unique[read1_position] = {read2_position}
         stats['unique'] += 1
         sam_out.write(read1)
         sam_out.write(read2)
         continue
 
-    # Case read2_position list is not empty and the read2_position is not in list    == LA duplicate
     if read2_position not in reads_unique[read1_position]:
-        reads_unique[read1_position].append(read2_position)
+        reads_unique[read1_position].add(read2_position)
         stats['LA duplicates'] += 1
         # LA duplicates are not reported in the final bam file
         continue

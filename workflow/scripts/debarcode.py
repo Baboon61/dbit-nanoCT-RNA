@@ -9,6 +9,7 @@ import gzip
 from contextlib import ExitStack
 from collections import defaultdict
 import time
+from multiprocessing import Pool
 
 import yaml
 from pysam import FastxFile
@@ -83,12 +84,6 @@ class bcdCT:
 
         self.path_in = {key:self.path_in[key][0] for key in self.path_in.keys()}
 
-
-
-    def in_handles(self,stack):
-        in_stack = {x: stack.enter_context(FastxFile(self.path_in[x],'r')) for x in ['R1','R2','R3']}
-        return in_stack
-
     def prep_out_filenames(self):
         self.path_out = {barcode: {} for barcode in self.picked_barcodes}
         self.path_out  = {barcode: {read: "{0}/barcode_{1}/{2}".format(self.out_prefix,barcode,os.path.basename(self.path_in[read])) for read in self.out_reads} for barcode in self.picked_barcodes}
@@ -158,7 +153,8 @@ class bcdCT:
                 continue
             else:
                 hit = int(hit)
-                read_barcode = get_read_barcode(read2, hit)
+                barcode_length = len(args.barcode[0]) if args.barcode != "None" else 8
+                read_barcode = get_read_barcode_from_sequence(read2.sequence, hit, barcode_length)
                 try:
                     barcodes[read_barcode] += 1
                 except KeyError:
@@ -184,22 +180,14 @@ class bcdCT:
         print(self.picked_barcodes)
         
 
-def get_read_barcode(string,index):
-    read_barcode = string.sequence[index - len(args.barcode[0]):index].upper()  # Get the barcode sequence
-    return read_barcode
+def get_read_barcode_from_sequence(sequence, index, barcode_length):
+    return sequence[index - barcode_length:index].upper()
 
-def extract_cell_barcode(read,index):
-    read.sequence = read.sequence[index:index + 16]  # Get the cell barcode
-    read.quality  = read.quality[index:index + 16]   # Get corresponding Quality score
-    return read
+def fastq_text(read):
+    return "@{}\n{}\n+\n{}\n".format(read[0], read[1], read[2])
 
-RC_TABLE = str.maketrans("ACGTNacgtn", "TGCANtgcan")
-
-def revcompl(seq):
-    return seq.translate(RC_TABLE)[::-1].upper()
-
-def rev(seq):
-    return seq[::-1]
+def extract_cell_barcode_tuple(read,index):
+    return (read[0], read[1][index:index + 16], read[2][index:index + 16])
 
 def compile_patterns(pattern, max_mismatch):
     return [
@@ -218,12 +206,111 @@ def find_seq_compiled(compiled_patterns, DNA_string):
         return hits[0]
     return None
 
-def flush_buffers(buffers, out_stack):
-    for bcd in buffers:
-        for read in buffers[bcd]:
-            if buffers[bcd][read]:
-                out_stack[bcd][read].write("".join(buffers[bcd][read]))
-                buffers[bcd][read].clear()
+def find_seq_fast(pattern, compiled_patterns, DNA_string, expected_position=None):
+    if expected_position is not None and DNA_string.startswith(pattern, expected_position):
+        return expected_position
+
+    exact_hit = DNA_string.find(pattern)
+    if exact_hit != -1:
+        if DNA_string.find(pattern, exact_hit + 1) == -1:
+            return exact_hit
+        return None
+
+    return find_seq_compiled(compiled_patterns, DNA_string)
+
+def process_read_chunk(task):
+    chunk, settings = task
+    spacer_patterns = compile_patterns(settings['pattern'], 2)
+    mea_patterns = compile_patterns(settings['no_barcode_seq'], 2)
+    picked_barcodes = settings['picked_barcodes']
+    out_reads = settings['out_reads']
+    barcode_length = settings['barcode_length']
+    expected_spacer_position = settings['expected_spacer_position']
+    expected_mea_position = settings['expected_mea_position']
+    mismatch = settings['mismatch']
+    single_cell = settings['single_cell']
+    report_no_hit = settings['report_no_hit']
+
+    statistics = defaultdict(int)
+    buffers = {barcode: {read: [] for read in out_reads} for barcode in picked_barcodes}
+
+    for read1, read2, read3 in chunk:
+        if read1[0] != read2[0] or read1[0] != read3[0]:
+            raise ValueError("*** Error: FASTQ read names are not synchronized: {}, {}, {}".format(read1[0], read2[0], read3[0]))
+
+        spacer_hit = find_seq_fast(settings['pattern'], spacer_patterns, read2[1], expected_spacer_position)
+        mea_hit = find_seq_fast(settings['no_barcode_seq'], mea_patterns, read2[1], expected_mea_position)
+
+        if spacer_hit is None and mea_hit is not None:
+            hit_barcode = 'MeA'
+            if single_cell:
+                read2 = extract_cell_barcode_tuple(read2, mea_hit - 16)
+
+        elif spacer_hit is not None:
+            read_barcode = get_read_barcode_from_sequence(read2[1], spacer_hit, barcode_length)
+            matches = []
+
+            if read_barcode in picked_barcodes:
+                matches = [read_barcode]
+            else:
+                for barcode in picked_barcodes:
+                    if barcode in ['MeA', 'no_spacer']:
+                        continue
+                    d = Levenshtein.distance(read_barcode, barcode)
+                    if d <= mismatch:
+                        matches.append(barcode)
+                        if len(matches) > 1:
+                            break
+
+            if len(matches) == 0:
+                statistics["no_barcode_match"] += 1
+                continue
+            if len(matches) > 1:
+                statistics["multiple_barcode_matches"] += 1
+                continue
+
+            hit_barcode = matches[0]
+
+            if single_cell:
+                read2 = extract_cell_barcode_tuple(read2, spacer_hit + len(settings['pattern']))
+
+        else:
+            statistics["no_spacer_found"] += 1
+            if report_no_hit:
+                hit_barcode = 'no_spacer'
+            else:
+                continue
+
+        if len(read2[1]) < 16:
+            statistics["too_short_read"] += 1
+            continue
+
+        statistics[hit_barcode] += 1
+        if hit_barcode in picked_barcodes:
+            buffers[hit_barcode]["R1"].append(fastq_text(read1))
+            buffers[hit_barcode]["R3"].append(fastq_text(read3))
+            if single_cell:
+                buffers[hit_barcode]["R2"].append(fastq_text(read2))
+
+    return len(chunk), dict(statistics), buffers
+
+def read_chunks(exp, chunk_size):
+    chunk = []
+    for read1, read2, read3 in exp:
+        chunk.append((
+            (read1.name, read1.sequence, read1.quality),
+            (read2.name, read2.sequence, read2.quality),
+            (read3.name, read3.sequence, read3.quality)
+        ))
+        if len(chunk) == chunk_size:
+            yield chunk
+            chunk = []
+    if chunk:
+        yield chunk
+
+def merge_statistics(total, partial):
+    for key, value in partial.items():
+        total[key] += value
 
 def count_selected_barcode_reads(statistics, picked_barcodes):
     return sum(statistics[barcode] for barcode in picked_barcodes)
@@ -232,17 +319,26 @@ def main(args):
     exp = bcdCT(args)
     statistics = defaultdict(int)
     log("Creating file output handles ")
-    
-    spacer_patterns = compile_patterns(args.pattern, 2)
-    MeA_patterns = compile_patterns(args.no_barcode_seq, 2)
+    barcode_length = len([barcode for barcode in exp.picked_barcodes if barcode not in ['MeA', 'no_spacer']][0])
+    expected_position = args.expected_spacer_position
+    if expected_position is None and args.barcode != "None":
+        expected_position = barcode_length
+
+    worker_settings = {
+        'pattern': args.pattern,
+        'no_barcode_seq': args.no_barcode_seq,
+        'picked_barcodes': exp.picked_barcodes,
+        'out_reads': exp.out_reads,
+        'barcode_length': barcode_length,
+        'expected_spacer_position': expected_position,
+        'expected_mea_position': expected_position,
+        'mismatch': args.mismatch,
+        'single_cell': args.single_cell,
+        'report_no_hit': args.report_no_hit,
+    }
     
     with ExitStack() as stack:
         exp.create_out_handles(stack)
-
-        buffers = {
-            barcode: {read: [] for read in exp.out_reads}
-            for barcode in exp.picked_barcodes
-        }
 
         # Buffered writes are much faster than writing each read immediately.
         # The first flush also acts as an early sanity check for wrong barcodes.
@@ -251,68 +347,28 @@ def main(args):
         n = 0
         sys.stderr.write("Starting demultiplexing \n")
 
-        for read1,read2,read3 in exp:
-            n+=1
-            if n % 5000000 == 0:
-                log("{} reads processed".format(n))
-            assert (read1.name == read2.name == read3.name)                                                 # Make sure the fastq files are ok
-           
-            spacer_hit = find_seq_compiled(spacer_patterns, read2.sequence)
-            MeA_hit    = find_seq_compiled(MeA_patterns, read2.sequence)
-            
-            if spacer_hit is None and MeA_hit is not None:
-                read_barcode = get_read_barcode(read2, MeA_hit)                                               # Returns only barcode e.g. ACTGACTG
-                hit_barcode  = 'MeA'
-                if exp.single_cell:
-                    read2 = extract_cell_barcode(read2, MeA_hit-16)     # The cell barcode is 16bp long and is positioned before the MeA spacer
+        chunk_tasks = ((chunk, worker_settings) for chunk in read_chunks(exp, args.chunk_size))
+        if args.threads == 1:
+            results = map(process_read_chunk, chunk_tasks)
+        else:
+            pool = Pool(processes=args.threads)
+            results = pool.imap(process_read_chunk, chunk_tasks)
 
-            elif spacer_hit is not None:
-                read_barcode = get_read_barcode(read2, spacer_hit)                                               # Returns only barcode e.g. ACTGACTG
-                matches = []
-                for barcode in exp.picked_barcodes:
-                    d = Levenshtein.distance(read_barcode, barcode)
-                    if d <= args.mismatch:
-                        matches.append(barcode)
-                        if len(matches) > 1:
-                            break
-                if len(matches) == 0:
-                    # Spacer hit but no barcode match
-                    statistics["no_barcode_match"] += 1
-                    continue
-                if len(matches) > 1:
-                    # Spacer hit but multiple barcode matches
-                    statistics["multiple_barcode_matches"] += 1
-                    continue
+        try:
+            first_flush_checked = False
+            for chunk_n, chunk_statistics, chunk_buffers in results:
+                n += chunk_n
+                merge_statistics(statistics, chunk_statistics)
+                for barcode in chunk_buffers:
+                    for read in chunk_buffers[barcode]:
+                        if chunk_buffers[barcode][read]:
+                            exp.out_stack[barcode][read].write("".join(chunk_buffers[barcode][read]))
 
-                hit_barcode = matches[0]
+                if n % 5000000 < chunk_n:
+                    log("{} reads processed".format(n))
 
-                if exp.single_cell:
-                    read2 = extract_cell_barcode(read2, spacer_hit + len(args.pattern))     # The cell barcode is 16bp long and is positioned after the spacer
-            
-            elif spacer_hit is None and MeA_hit is None:
-                statistics["no_spacer_found"] += 1
-                # No hit, no spacer not nothing found
-                if args.report_no_hit:
-                    hit_barcode = 'no_spacer'
-                else:
-                    continue        
-            
-            # Now continue in the loop
-            if len(read2.sequence) < 16:
-                    statistics["too_short_read"] += 1
-                    continue
-            
-            statistics[hit_barcode] += 1
-            if hit_barcode in exp.picked_barcodes:
-                # Write the outputs
-                buffers[hit_barcode]["R1"].append(str(read1) + "\n")
-                buffers[hit_barcode]["R3"].append(str(read3) + "\n")
-                if args.single_cell:
-                    buffers[hit_barcode]["R2"].append(str(read2) + "\n")
-
-            if n % flush_every == 0:
-                flush_buffers(buffers, exp.out_stack)
-                if n == flush_every:
+                if not first_flush_checked and n >= flush_every:
+                    first_flush_checked = True
                     selected_reads = count_selected_barcode_reads(statistics, exp.picked_barcodes)
                     selected_ratio = selected_reads / n
                     # Fail early if the selected antibody barcode is essentially absent.
@@ -325,8 +381,10 @@ def main(args):
                             ", ".join(exp.picked_barcodes),
                             args.min_first_flush_ratio
                         ))
-
-        flush_buffers(buffers, exp.out_stack)
+        finally:
+            if args.threads != 1:
+                pool.close()
+                pool.join()
 
     log("Finished demultiplexing {} reads. Statistics:\n{}".format(n, dict(statistics)))
 
@@ -406,6 +464,21 @@ if __name__ == '__main__':
                         default=0.00001,
                         help='Minimum selected-barcode read ratio required after the first flush (Default: %(default)s)')
 
+    parser.add_argument('--threads',
+                        type=int,
+                        default=1,
+                        help='Number of worker processes for chunked demultiplexing (Default: %(default)s)')
+
+    parser.add_argument('--chunk_size',
+                        type=int,
+                        default=10000,
+                        help='Number of read triplets per worker chunk (Default: %(default)s)')
+
+    parser.add_argument('--expected_spacer_position',
+                        type=int,
+                        default=None,
+                        help='Expected 0-based spacer start. Defaults to selected barcode length when --barcode is provided.')
+
     parser.add_argument('--no_barcode_seq', type=str, 
                         default='GTGTAGATCTCGGTGGTCGCCGTATCATT', 
                         help='Sequence indicating unbarcoded reads')
@@ -424,8 +497,14 @@ if __name__ == '__main__':
     args = parser.parse_args()
     if args.flush_every <= 0:
         parser.error("--flush_every must be a positive integer")
+    if args.threads <= 0:
+        parser.error("--threads must be a positive integer")
+    if args.chunk_size <= 0:
+        parser.error("--chunk_size must be a positive integer")
     if args.min_first_flush_ratio < 0 or args.min_first_flush_ratio > 1:
         parser.error("--min_first_flush_ratio must be between 0 and 1")
+    if args.expected_spacer_position is not None and args.expected_spacer_position < 0:
+        parser.error("--expected_spacer_position must be a non-negative integer")
     log("Starting debarcode.py script ")
     log("Input files: \n{}".format("".join(["    " + i + "\n" for i in args.input])))
     if args.barcode != "None":

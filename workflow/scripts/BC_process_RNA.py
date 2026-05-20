@@ -1,6 +1,8 @@
 from Bio.SeqIO.QualityIO import FastqGeneralIterator
 import gzip
 import sys
+import json
+import os
 
 import argparse
 
@@ -18,6 +20,7 @@ def check_positive(value):
 ap = argparse.ArgumentParser()
 ap.add_argument("-i", "--input", required=True, help="input file")
 ap.add_argument("-o", "--output", required=True, help="output file")
+ap.add_argument("--stats", required=False, help="optional JSON stats output")
 ap.add_argument("-p", "--primer_length", required=True, help="PCR primer sequence length", type=check_positive)
 ap.add_argument("-l1", "--linker1_length", required=True, help="linker1 sequence length", type=check_positive)
 ap.add_argument("-l2", "--linker2_length", required=True, help="linker2 sequence length", type=check_positive)
@@ -46,8 +49,11 @@ bc1_end=bc1_start+spatial_barcode1_length-1
 bc_umi_start=bc1_end+linker1_length+1
 bc_umi_end=bc_umi_start+umi_barcode_length-1
 
+stats = {"reads_processed": 0, "reads_written": 0}
+
 with open_maybe_gzip(input_file, "rt") as in_handle, open_maybe_gzip(output_file, "wt") as out_handle:
     for title, seq, qual in FastqGeneralIterator(in_handle):
+        stats["reads_processed"] += 1
         if len(seq) < seq_start or len(qual) < seq_start:
             sys.exit("*** Error: read '{}' is too short for configured barcode structure.\n"
                      "Need at least {} bases but found sequence length {} and quality length {}.\n".format(
@@ -64,3 +70,12 @@ with open_maybe_gzip(input_file, "rt") as in_handle, open_maybe_gzip(output_file
         pix_full_qual = pxl_bcd_qual+umi_bcd_qual
              
         out_handle.write("@%s\n%s\n+\n%s\n" % (title, pix_full_seq, pix_full_qual))
+        stats["reads_written"] += 1
+
+if args.get("stats"):
+    stats_dir = os.path.dirname(args["stats"])
+    if stats_dir:
+        os.makedirs(stats_dir, exist_ok=True)
+    with open(args["stats"], "w") as stats_handle:
+        json.dump(stats, stats_handle, indent=2, sort_keys=True)
+        stats_handle.write("\n")

@@ -1,15 +1,13 @@
 samples:                                                                                                                     # Modify the name of your sample
-  [
-  P35765_1010
-  ]
+  - P35765_1010
 
 general:
-  rawData_dir: /date/gcb/gcb_BH/Data/SCTYH/P35765/Raw                                                                        # Modify raw sequenc$
-  processedData_dir: /date/gcb/gcb_BH/Data/SCTYH/Test/Processed/RNA                                                       # Modify processed s$
-  spatial_barcodes_file: barcodes/spatial_barcodes_10000.txt
+  rawData_dir: /date/gcb/gcb_BH/Data/SCTYH/P35765/Raw                                                                        # Modify raw data path for your sample
+  processedData_dir: /date/gcb/gcb_BH/Data/SCTYH/Test/Processed/RNA                                                          # Modify processed data path for your sample
+  spatial_barcodes_file: barcodes/spatial_barcodes_10000.txt                                                                 # Modify the path to the spatial barcodes file for your sample
   read_barcode: R2                                                                                                           # Modify which R file contains the barcodes in RNA sample
   core: 2                                                                                                                    # Modify threads to use
-  tempdir: /date/gcb/gcb_BH/Data/SCTYH/Test/Processed/tmp_RNA/                                                             # Modify path to a tmp folder already created
+  tempdir: /date/gcb/gcb_BH/Data/SCTYH/Test/Processed/tmp_RNA/                                                               # Modify path to a tmp folder already created
   cellranger:
     software_bin: /date/gcb/gcb_BH/cellranger_spatial/cellranger-7.1.0/cellranger                                            # Modify the path to cellranger RNA binaries
     reference_path: /date/gcb/gcb_BH/cellranger_spatial/refdata-gex-GRCh38-2020-A/                                           # Modify the path to cellranger RNA reference
