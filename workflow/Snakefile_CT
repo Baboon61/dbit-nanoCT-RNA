@@ -1,31 +1,27 @@
 include: 'Snakefile_prep_CT.smk'
+include: 'Snakefile_paths.smk'
 
 #General rule
 rule all:
   input:
     filterPCR=[
-      proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_R1_raw_qc_primer_{suffix}.{ext}'.format( \
-      sample=res['id'], number=res['number'], lane=res['lane'], suffix=res['suffix'], ext=res['ext']) \
+      qc_fastq(res['id'], res['number'], res['lane'], 'R1', 'raw_qc_primer', res['suffix'], res['ext']) \
       for sample_id in samples_list for res in get_fastq_info_from_folder(raw_dir, sample_id)
     ],
     filterL1=[
-      proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_R1_raw_qc_linker1_{suffix}.{ext}'.format( \
-      sample=res['id'], number=res['number'], lane=res['lane'], suffix=res['suffix'], ext=res['ext']) \
+      qc_fastq(res['id'], res['number'], res['lane'], 'R1', 'raw_qc_linker1', res['suffix'], res['ext']) \
       for sample_id in samples_list for res in get_fastq_info_from_folder(raw_dir, sample_id)
     ],
     filterL2=[
-      proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_R1_raw_qc_linker2_{suffix}.{ext}'.format( \
-      sample=res['id'], number=res['number'], lane=res['lane'], suffix=res['suffix'], ext=res['ext']) \
+      qc_fastq(res['id'], res['number'], res['lane'], 'R1', 'raw_qc_linker2', res['suffix'], res['ext']) \
       for sample_id in samples_list for res in get_fastq_info_from_folder(raw_dir, sample_id)
     ],
     bc_process=[
-      proc_dir + '{sample}/tmp_data/{sample}_{number}_{lane}_R2_{suffix}.{ext}'.format( \
-      sample=res['id'], number=res['number'], lane=res['lane'], suffix=res['suffix'], ext=res['ext']) \
+      tmp_fastq(res['id'], res['number'], res['lane'], 'R2', res['suffix'], res['ext']) \
       for sample_id in samples_list for res in get_fastq_info_from_folder(raw_dir, sample_id)
     ],
     seq_file_rename=[
-      proc_dir + '{sample}/tmp_data/{sample}_{number}_{lane}_R3_{suffix}.{ext}'.format( \
-      sample=sample_id, number=res['number'], lane=res['lane'], suffix=res['suffix'], ext=res['ext']) \
+      tmp_fastq(sample_id, res['number'], res['lane'], 'R3', res['suffix'], res['ext']) \
       for sample_id in samples_list for res in get_fastq_info_from_folder(raw_dir, sample_id)
     ],
     debarcode=[
@@ -82,191 +78,18 @@ rule all:
       for sample_id in samples_list for modality in barcodes_dict[sample_id].keys()
     ],
 
-#Filter out read without PCR primer, high hamming distance
-rule filter_primer:
-  input:
-    in1 = lambda wildcards: glob.glob(raw_dir+'{sample}/**/{sample}_{number}_{lane}_R1_{suffix}.{ext}' \
-      .format( \
-        sample=wildcards.sample,
-        number=wildcards.number,
-        lane=wildcards.lane,
-        suffix=wildcards.suffix,
-        ext=wildcards.ext
-      ),recursive=True),
-    in2 = lambda wildcards: glob.glob(raw_dir+'{sample}/**/{sample}_{number}_{lane}_R2_{suffix}.{ext}' \
-      .format( \
-        sample=wildcards.sample,
-        number=wildcards.number,
-        lane=wildcards.lane,
-        suffix=wildcards.suffix,
-        ext=wildcards.ext
-      ),recursive=True)
-  output:
-    out1 = proc_dir+'{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_R1_raw_qc_primer_{suffix}.{ext}',
-    out2 = proc_dir+'{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_R2_raw_qc_primer_{suffix}.{ext}',
-    outfile = touch(proc_dir+'{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_{suffix}.{ext}_filter_primer.done')
-  params:
-    k_length = len(config['general']['PCRprimer_sequence']),
-    k_length_restrict = len(config['general']['PCRprimer_sequence'])+8,
-    barcode_r1 = barcode_r1,
-    barcode_r2 = barcode_r2,
-    hamming_distance = config['general']['hamming_distance_linkers'],
-    PCRprimer_sequence = config['general']['PCRprimer_sequence'],
-    out_dir = proc_dir
-  threads: config['general']['core']
-  conda: '../envs/dbit-spatial-nanoct-rna-bbduk.yaml'
-  shell:
-    '''
-    bbduk.sh \
-    in1={input.in1} \
-    in2={input.in2} \
-    outm1={output.out1} \
-    outm2={output.out2} \
-    k={params.k_length} mm=f rcomp=f restrictleft={params.k_length_restrict} \
-    skipr1={params.barcode_r1} skipr2={params.barcode_r2} \
-    hdist={params.hamming_distance} \
-    stats={params.out_dir}{wildcards.sample}/tmp_data/qc_raw_data/{wildcards.sample}_{wildcards.lane}_stats.primer.txt \
-    threads={threads} \
-    literal={params.PCRprimer_sequence}
-    '''
-
-#Filter out read without linker 1
-rule filter_L1:
-  input:
-    in1 = lambda wildcards: proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_R1_raw_qc_primer_{suffix}.{ext}' \
-      .format( \
-        sample=wildcards.sample,
-        number=wildcards.number,
-        lane=wildcards.lane,
-        suffix=wildcards.suffix,
-        ext=wildcards.ext
-      ),
-    in2 = lambda wildcards: proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_R2_raw_qc_primer_{suffix}.{ext}' \
-      .format( \
-        sample=wildcards.sample,
-        number=wildcards.number,
-        lane=wildcards.lane,
-        suffix=wildcards.suffix,
-        ext=wildcards.ext
-      ),
-    infile = lambda wildcards: proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_{suffix}.{ext}_filter_primer.done' \
-      .format( \
-        sample=wildcards.sample,
-        number=wildcards.number,
-        lane=wildcards.lane,
-        suffix=wildcards.suffix,
-        ext=wildcards.ext
-      )
-  output:
-    out1 = proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_R1_raw_qc_linker1_{suffix}.{ext}',
-    out2 = proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_R2_raw_qc_linker1_{suffix}.{ext}',
-    outfile = touch(proc_dir+'{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_{suffix}.{ext}_filter_L1.done')
-  params:
-    k_length = len(config['general']['linker1_sequence']),
-    k_length_restrict = len(config['general']['linker1_sequence'])+80,
-    barcode_r1 = barcode_r1,
-    barcode_r2 = barcode_r2,
-    hamming_distance = config['general']['hamming_distance_linkers'],
-    linker1_sequence = config['general']['linker1_sequence'],
-    out_dir = proc_dir
-  threads: config['general']['core']
-  conda: '../envs/dbit-spatial-nanoct-rna-bbduk.yaml'
-  shell:
-    '''
-    bbduk.sh \
-    in1={input.in1} \
-    in2={input.in2} \
-    outm1={output.out1} \
-    outm2={output.out2} \
-    k={params.k_length} mm=f rcomp=f restrictleft={params.k_length_restrict} \
-    skipr1={params.barcode_r1} skipr2={params.barcode_r2} \
-    hdist={params.hamming_distance} \
-    stats={params.out_dir}/{wildcards.sample}/tmp_data/qc_raw_data/{wildcards.sample}_{wildcards.lane}_stats.linker1.txt \
-    threads={threads} \
-    literal={params.linker1_sequence}
-    '''
-
-#Filter out read without linker 2
-rule filter_L2:
-  input:
-    in1 = lambda wildcards: proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_R1_raw_qc_linker1_{suffix}.{ext}' \
-      .format( \
-        sample=wildcards.sample,
-        number=wildcards.number,
-        lane=wildcards.lane,
-        suffix=wildcards.suffix,
-        ext=wildcards.ext
-      ),
-    in2 = lambda wildcards: proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_R2_raw_qc_linker1_{suffix}.{ext}' \
-      .format( \
-        sample=wildcards.sample,
-        number=wildcards.number,
-        lane=wildcards.lane,
-        suffix=wildcards.suffix,
-        ext=wildcards.ext
-      ),
-    infile = lambda wildcards: proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_{suffix}.{ext}_filter_L1.done' \
-      .format( \
-        sample=wildcards.sample,
-        number=wildcards.number,
-        lane=wildcards.lane,
-        suffix=wildcards.suffix,
-        ext=wildcards.ext
-      )
-  output:
-    out1 = proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_R1_raw_qc_linker2_{suffix}.{ext}',
-    out2 = proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_R2_raw_qc_linker2_{suffix}.{ext}',
-    outfile = touch(proc_dir+'{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_{suffix}.{ext}_filter_L2.done')
-  params:
-    k_length = len(config['general']['linker2_sequence']),
-    k_length_restrict = len(config['general']['linker2_sequence'])+40,
-    barcode_r1 = barcode_r1,
-    barcode_r2 = barcode_r2,
-    hamming_distance = config['general']['hamming_distance_linkers'],
-    linker2_sequence = config['general']['linker2_sequence'],
-    out_dir = proc_dir
-  threads: config['general']['core']
-  conda: '../envs/dbit-spatial-nanoct-rna-bbduk.yaml'
-  shell:
-    '''
-    bbduk.sh \
-    in1={input.in1} \
-    in2={input.in2} \
-    outm1={output.out1} \
-    outm2={output.out2} \
-    k={params.k_length} mm=f rcomp=f restrictleft={params.k_length_restrict} \
-    skipr1={params.barcode_r1} skipr2={params.barcode_r2} \
-    hdist={params.hamming_distance} \
-    stats={params.out_dir}/{wildcards.sample}/tmp_data/qc_raw_data/{wildcards.sample}_{wildcards.lane}_stats.linker2.txt \
-    threads={threads} \
-    literal={params.linker2_sequence}
-    '''
+include: 'Snakefile_spatial_demux.smk'
 
 #Create a new R2 with spatial barcode and modality barcodes
 rule bc_process:
   input:
     script = workflow.basedir + '/scripts/BC_process_CT.py',
-    in1 = lambda wildcards: proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_{Rfile_barcode}_raw_qc_linker2_{suffix}.{ext}' \
-      .format( \
-        sample=wildcards.sample,
-        number=wildcards.number,
-        lane=wildcards.lane,
-        suffix=wildcards.suffix,
-        ext=wildcards.ext,
-        Rfile_barcode=Rfile_barcode
-      ),
-    infile = lambda wildcards: proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_{suffix}.{ext}_filter_L2.done' \
-      .format( \
-        sample=wildcards.sample,
-        number=wildcards.number,
-        lane=wildcards.lane,
-        suffix=wildcards.suffix,
-        ext=wildcards.ext
-      )
+    in1 = lambda wildcards: qc_fastq(wildcards.sample, wildcards.number, wildcards.lane, Rfile_barcode, 'raw_qc_linker2', wildcards.suffix, wildcards.ext),
+    infile = lambda wildcards: qc_done(wildcards.sample, wildcards.number, wildcards.lane, wildcards.suffix, wildcards.ext, 'filter_L2')
   output:
-    out1 = proc_dir + '{sample}/tmp_data/{sample}_{number}_{lane}_R1_{suffix}.{ext}',
-    out2 = proc_dir + '{sample}/tmp_data/{sample}_{number}_{lane}_R2_{suffix}.{ext}',
-    outfile = touch(proc_dir+'{sample}/tmp_data/{sample}_{number}_{lane}_{suffix}.{ext}_bc_process.done')
+    out1 = tmp_fastq('{sample}', '{number}', '{lane}', 'R1', '{suffix}', '{ext}'),
+    out2 = tmp_fastq('{sample}', '{number}', '{lane}', 'R2', '{suffix}', '{ext}'),
+    outfile = touch(tmp_done('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'bc_process'))
   params:
     primer_length = len(config['general']['PCRprimer_sequence']),
     linker1_length = len(config['general']['linker1_sequence']),
@@ -295,26 +118,11 @@ rule bc_process:
 #Rename the sequence file to R3
 rule seq_file_rename:
   input:
-    in1 = lambda wildcards: proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_{Rfile_sequence}_raw_qc_linker2_{suffix}.{ext}' \
-      .format( \
-        sample=wildcards.sample,
-        number=wildcards.number,
-        lane=wildcards.lane,
-        suffix=wildcards.suffix,
-        ext=wildcards.ext,
-        Rfile_sequence=Rfile_sequence
-      ),
-    infile = lambda wildcards: proc_dir + '{sample}/tmp_data/qc_raw_data/{sample}_{number}_{lane}_{suffix}.{ext}_filter_L2.done' \
-      .format( \
-        sample=wildcards.sample,
-        number=wildcards.number,
-        lane=wildcards.lane,
-        suffix=wildcards.suffix,
-        ext=wildcards.ext
-      )
+    in1 = lambda wildcards: qc_fastq(wildcards.sample, wildcards.number, wildcards.lane, Rfile_sequence, 'raw_qc_linker2', wildcards.suffix, wildcards.ext),
+    infile = lambda wildcards: qc_done(wildcards.sample, wildcards.number, wildcards.lane, wildcards.suffix, wildcards.ext, 'filter_L2')
   output:
-    out1 = proc_dir + '{sample}/tmp_data/{sample}_{number}_{lane}_R3_{suffix}.{ext}',
-    outfile = touch(proc_dir+'{sample}/tmp_data/{sample}_{number}_{lane}_{suffix}.{ext}_seq_file_rename.done')
+    out1 = tmp_fastq('{sample}', '{number}', '{lane}', 'R3', '{suffix}', '{ext}'),
+    outfile = touch(tmp_done('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'seq_file_rename'))
   shell:
     '''
     cp {input.in1} {output.out1}
@@ -325,32 +133,11 @@ rule debarcode:
   input:
     script = workflow.basedir + '/scripts/debarcode.py',
     fastq = lambda wildcards: [
-      proc_dir + '{sample}/tmp_data/{sample}_{number}_{lane}_R{read}_{suffix}.{ext}'.format(
-        sample=wildcards.sample,
-        number=wildcards.number,
-        lane=wildcards.lane,
-        read=read,
-        suffix=wildcards.suffix,
-        ext=wildcards.ext
-      )
+      tmp_fastq(wildcards.sample, wildcards.number, wildcards.lane, 'R{read}'.format(read=read), wildcards.suffix, wildcards.ext)
       for read in [1, 2, 3]
     ],
-    infile1 = lambda wildcards: proc_dir + '{sample}/tmp_data/{sample}_{number}_{lane}_{suffix}.{ext}_bc_process.done' \
-      .format( \
-        sample=wildcards.sample,
-        number=wildcards.number,
-        lane=wildcards.lane,
-        suffix=wildcards.suffix,
-        ext=wildcards.ext
-      ),
-    infile2 = lambda wildcards: proc_dir + '{sample}/tmp_data/{sample}_{number}_{lane}_{suffix}.{ext}_seq_file_rename.done' \
-      .format( \
-        sample=wildcards.sample,
-        number=wildcards.number,
-        lane=wildcards.lane,
-        suffix=wildcards.suffix,
-        ext=wildcards.ext
-      )
+    infile1 = lambda wildcards: tmp_done(wildcards.sample, wildcards.number, wildcards.lane, wildcards.suffix, wildcards.ext, 'bc_process'),
+    infile2 = lambda wildcards: tmp_done(wildcards.sample, wildcards.number, wildcards.lane, wildcards.suffix, wildcards.ext, 'seq_file_rename')
   output:
     proc_dir + '{sample}/{modality}_{barcode}/fastq/barcode_{barcode}/{sample}_{number}_{lane}_R1_{suffix}.{ext}',
     proc_dir + '{sample}/{modality}_{barcode}/fastq/barcode_{barcode}/{sample}_{number}_{lane}_R2_{suffix}.{ext}',
