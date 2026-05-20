@@ -244,6 +244,8 @@ def main(args):
             for barcode in exp.picked_barcodes
         }
 
+        # Buffered writes are much faster than writing each read immediately.
+        # The first flush also acts as an early sanity check for wrong barcodes.
         flush_every = args.flush_every
 
         n = 0
@@ -313,6 +315,7 @@ def main(args):
                 if n == flush_every:
                     selected_reads = count_selected_barcode_reads(statistics, exp.picked_barcodes)
                     selected_ratio = selected_reads / n
+                    # Fail early if the selected antibody barcode is essentially absent.
                     if selected_ratio < args.min_first_flush_ratio:
                         sys.exit("*** Error: only {} / {} reads ({:.6f}) matched the selected barcode(s) in the first flush: {}.\n"
                                  "Minimum required by --min_first_flush_ratio is {:.6f}.\n".format(

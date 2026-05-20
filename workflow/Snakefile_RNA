@@ -1,7 +1,7 @@
 include: 'Snakefile_prep_RNA.smk'
 include: 'Snakefile_paths.smk'
 
-#General rule
+# Final RNA targets. Done files are used as completion gatekeepers.
 rule all:
   input:
     filterprimer=[
@@ -37,7 +37,7 @@ rule all:
 
 include: 'Snakefile_spatial_demux.smk'
 
-#Create a new R1 with spatial barcode and UMI
+# Build the RNA R1 read containing spatial barcode plus UMI.
 rule bc_process:
   input:
     script = workflow.basedir + '/scripts/BC_process_RNA.py',
@@ -46,6 +46,8 @@ rule bc_process:
   output:
     out1 = tmp_fastq('{sample}', '{number}', '{lane}', 'R1', '{suffix}', '{ext}'),
     outfile = touch(tmp_done('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'bc_process'))
+  log:
+    sample_lane_log('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'bc_process')
   params:
     primer_length = len(config['general']['PCRprimer_sequence']),
     linker1_length = len(config['general']['linker1_sequence']),
@@ -65,10 +67,10 @@ rule bc_process:
     --spatial_barcode1_length {params.spatial_barcode1_length} \
     --spatial_barcode2_length {params.spatial_barcode2_length} \
     --umi_barcode_length {params.umi_barcode_length} \
-    2>&1
+    > {log} 2>&1
     '''
 
-#Rename the sequence file to R2
+# Keep the sequence read as R2 for Cell Ranger RNA.
 rule seq_file_rename:
   input:
     in1 = lambda wildcards: qc_fastq(wildcards.sample, wildcards.number, wildcards.lane, Rfile_sequence, 'raw_qc_linker2', wildcards.suffix, wildcards.ext),
@@ -76,18 +78,22 @@ rule seq_file_rename:
   output:
     out1 = tmp_fastq('{sample}', '{number}', '{lane}', 'R2', '{suffix}', '{ext}'),
     outfile = touch(tmp_done('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'seq_file_rename'))
+  log:
+    sample_lane_log('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'seq_file_rename')
   shell:
     '''
-    cp {input.in1} {output.out1}
+    cp {input.in1} {output.out1} > {log} 2>&1
     '''
 
-#Replace the cellranger barcodes list
+# Temporarily replace Cell Ranger's barcode whitelist with the spatial whitelist.
 rule get_barcodes_cellranger:
   input:
     spatial_barcodes = config['general']['spatial_barcodes_file'],
   output:
     backup = cellranger_barcodes_backup(),
     outfile = touch(global_done('get_barcodes_cellranger'))
+  log:
+    global_log('get_barcodes_cellranger')
   params:
     script = workflow.basedir + '/scripts/replace_cellranger_barcodes.py',
     cellranger_barcodes_file = cellranger_barcodes_path()
@@ -96,9 +102,10 @@ rule get_barcodes_cellranger:
     python3 {params.script} \
       --spatial-barcodes {input.spatial_barcodes} \
       --cellranger-barcodes {params.cellranger_barcodes_file} \
-      --backup {output.backup}
+      --backup {output.backup} > {log} 2>&1
     '''
 
+# Restore the original Cell Ranger whitelist after all RNA Cell Ranger jobs finish.
 rule restore_cellranger_barcodes:
   input:
     backup = cellranger_barcodes_backup(),
@@ -108,6 +115,8 @@ rule restore_cellranger_barcodes:
     ]
   output:
     outfile = touch(global_done('restore_cellranger_barcodes'))
+  log:
+    global_log('restore_cellranger_barcodes')
   params:
     script = workflow.basedir + '/scripts/restore_cellranger_barcodes.py',
     cellranger_barcodes_file = cellranger_barcodes_path()
@@ -115,10 +124,10 @@ rule restore_cellranger_barcodes:
     '''
     python3 {params.script} \
       --cellranger-barcodes {params.cellranger_barcodes_file} \
-      --backup {input.backup}
+      --backup {input.backup} > {log} 2>&1
     '''
 
-#Run cellranger
+# Run Cell Ranger RNA using the processed R1/R2 FASTQs.
 rule run_cellranger:
   input:
     in1 = lambda wildcards: [tmp_fastq(res['id'], res['number'], res['lane'], 'R1', res['suffix'], res['ext']) for res in get_fastq_info_from_folder(raw_dir, wildcards.sample)],
@@ -127,8 +136,10 @@ rule run_cellranger:
     infile2 = lambda wildcards: [tmp_done(res['id'], res['number'], res['lane'], res['suffix'], res['ext'], 'seq_file_rename') for res in get_fastq_info_from_folder(raw_dir, wildcards.sample)],
     infile3 = global_done('get_barcodes_cellranger')
   output:
-    bam = proc_dir + '{sample}/cellranger/outs/possorted_genome_bam.bam',
+    bam = rna_cellranger_out('{sample}', 'possorted_genome_bam.bam'),
     outfile = touch(sample_done('{sample}', 'run_cellranger'))
+  log:
+    sample_log('{sample}', 'run_cellranger')
   params:
     cellranger_software = config['general']['cellranger']['software_bin'],
     cellranger_ref = config['general']['cellranger']['reference_path'],
@@ -139,6 +150,7 @@ rule run_cellranger:
   threads: config['general']['cellranger']['core']
   shell:
     '''
+    {{
     rm -rf {params.processed_dir}{wildcards.sample}/cellranger/;
     cd {params.processed_dir}{wildcards.sample}/;
     {params.cellranger_software} count \
@@ -150,4 +162,5 @@ rule run_cellranger:
       --localcores={threads} \
       --localmem={params.cellranger_mem}
     python3 {params.check_outputs} {output.bam}
+    }} > {log} 2>&1
     '''

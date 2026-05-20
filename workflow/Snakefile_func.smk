@@ -1,5 +1,7 @@
 from functools import lru_cache
 
+# FASTQ discovery is used many times while Snakemake builds the DAG.
+# Cache it so large raw folders are scanned once per sample.
 @lru_cache(maxsize=None)
 def get_fastq_info_from_folder(fastq_folder, sample):
     import glob
@@ -12,6 +14,7 @@ def get_fastq_info_from_folder(fastq_folder, sample):
     all_fastq_parsed = [parse_fastq(x) for x in all_fastq_files]
     return all_fastq_parsed
 
+# Parse 10X-style FASTQ filenames into fields used as Snakemake wildcards.
 def parse_fastq(path):
     import os
     import re

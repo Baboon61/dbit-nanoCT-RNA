@@ -1,4 +1,4 @@
-#Filter out read without PCR primer, high hamming distance
+# Keep read pairs where the PCR primer is found within the allowed mismatch rate.
 rule filter_primer:
   input:
     in1 = lambda wildcards: glob.glob(raw_fastq_glob(wildcards.sample, wildcards.number, wildcards.lane, 'R1', wildcards.suffix, wildcards.ext), recursive=True),
@@ -7,6 +7,8 @@ rule filter_primer:
     out1 = qc_fastq('{sample}', '{number}', '{lane}', 'R1', 'raw_qc_primer', '{suffix}', '{ext}'),
     out2 = qc_fastq('{sample}', '{number}', '{lane}', 'R2', 'raw_qc_primer', '{suffix}', '{ext}'),
     outfile = touch(qc_done('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'filter_primer'))
+  log:
+    sample_lane_log('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'filter_primer')
   params:
     k_length = len(config['general']['PCRprimer_sequence']),
     k_length_restrict = len(config['general']['PCRprimer_sequence'])+8,
@@ -19,6 +21,7 @@ rule filter_primer:
   conda: '../envs/dbit-spatial-nanoct-rna-bbduk.yaml'
   shell:
     '''
+    {{
     bbduk.sh \
     in1={input.in1} \
     in2={input.in2} \
@@ -30,9 +33,10 @@ rule filter_primer:
     stats={params.out_dir}{wildcards.sample}/tmp_data/qc_raw_data/{wildcards.sample}_{wildcards.lane}_stats.primer.txt \
     threads={threads} \
     literal={params.PCRprimer_sequence}
+    }} > {log} 2>&1
     '''
 
-#Filter out read without linker 1
+# Keep read pairs where linker 1 is found after primer filtering.
 rule filter_L1:
   input:
     in1 = lambda wildcards: qc_fastq(wildcards.sample, wildcards.number, wildcards.lane, 'R1', 'raw_qc_primer', wildcards.suffix, wildcards.ext),
@@ -42,6 +46,8 @@ rule filter_L1:
     out1 = qc_fastq('{sample}', '{number}', '{lane}', 'R1', 'raw_qc_linker1', '{suffix}', '{ext}'),
     out2 = qc_fastq('{sample}', '{number}', '{lane}', 'R2', 'raw_qc_linker1', '{suffix}', '{ext}'),
     outfile = touch(qc_done('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'filter_L1'))
+  log:
+    sample_lane_log('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'filter_L1')
   params:
     k_length = len(config['general']['linker1_sequence']),
     k_length_restrict = len(config['general']['linker1_sequence'])+80,
@@ -54,6 +60,7 @@ rule filter_L1:
   conda: '../envs/dbit-spatial-nanoct-rna-bbduk.yaml'
   shell:
     '''
+    {{
     bbduk.sh \
     in1={input.in1} \
     in2={input.in2} \
@@ -65,9 +72,10 @@ rule filter_L1:
     stats={params.out_dir}/{wildcards.sample}/tmp_data/qc_raw_data/{wildcards.sample}_{wildcards.lane}_stats.linker1.txt \
     threads={threads} \
     literal={params.linker1_sequence}
+    }} > {log} 2>&1
     '''
 
-#Filter out read without linker 2
+# Keep read pairs where linker 2 is found after linker 1 filtering.
 rule filter_L2:
   input:
     in1 = lambda wildcards: qc_fastq(wildcards.sample, wildcards.number, wildcards.lane, 'R1', 'raw_qc_linker1', wildcards.suffix, wildcards.ext),
@@ -77,6 +85,8 @@ rule filter_L2:
     out1 = qc_fastq('{sample}', '{number}', '{lane}', 'R1', 'raw_qc_linker2', '{suffix}', '{ext}'),
     out2 = qc_fastq('{sample}', '{number}', '{lane}', 'R2', 'raw_qc_linker2', '{suffix}', '{ext}'),
     outfile = touch(qc_done('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'filter_L2'))
+  log:
+    sample_lane_log('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'filter_L2')
   params:
     k_length = len(config['general']['linker2_sequence']),
     k_length_restrict = len(config['general']['linker2_sequence'])+40,
@@ -89,6 +99,7 @@ rule filter_L2:
   conda: '../envs/dbit-spatial-nanoct-rna-bbduk.yaml'
   shell:
     '''
+    {{
     bbduk.sh \
     in1={input.in1} \
     in2={input.in2} \
@@ -100,4 +111,5 @@ rule filter_L2:
     stats={params.out_dir}/{wildcards.sample}/tmp_data/qc_raw_data/{wildcards.sample}_{wildcards.lane}_stats.linker2.txt \
     threads={threads} \
     literal={params.linker2_sequence}
+    }} > {log} 2>&1
     '''

@@ -1,7 +1,8 @@
 include: 'Snakefile_prep_CT.smk'
 include: 'Snakefile_paths.smk'
 
-#General rule
+# Final CT targets. Most entries are .done gatekeepers so downstream rules wait
+# for upstream rules to finish completely, not just for a data file to appear.
 rule all:
   input:
     filterPCR=[
@@ -73,7 +74,8 @@ rule all:
 
 include: 'Snakefile_spatial_demux.smk'
 
-#Create a new R2 with spatial barcode and modality barcodes
+# Build synthetic CT R1/R2 reads from the barcode-containing read.
+# R1 becomes the sequence read and R2 carries modality/Tn5/spatial barcode data.
 rule bc_process:
   input:
     script = workflow.basedir + '/scripts/BC_process_CT.py',
@@ -83,6 +85,8 @@ rule bc_process:
     out1 = tmp_fastq('{sample}', '{number}', '{lane}', 'R1', '{suffix}', '{ext}'),
     out2 = tmp_fastq('{sample}', '{number}', '{lane}', 'R2', '{suffix}', '{ext}'),
     outfile = touch(tmp_done('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'bc_process'))
+  log:
+    sample_lane_log('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'bc_process')
   params:
     primer_length = len(config['general']['PCRprimer_sequence']),
     linker1_length = len(config['general']['linker1_sequence']),
@@ -105,10 +109,10 @@ rule bc_process:
     --spatial_barcode1_length {params.spatial_barcode1_length} \
     --spatial_barcode2_length {params.spatial_barcode2_length} \
     --nanoCT_barcode_length {params.nanoCutTag_barcode_length} \
-    2>&1
+    > {log} 2>&1
     '''
 
-#Rename the sequence file to R3
+# Keep the original sequence read as R3 for debarcode.py.
 rule seq_file_rename:
   input:
     in1 = lambda wildcards: qc_fastq(wildcards.sample, wildcards.number, wildcards.lane, Rfile_sequence, 'raw_qc_linker2', wildcards.suffix, wildcards.ext),
@@ -116,12 +120,14 @@ rule seq_file_rename:
   output:
     out1 = tmp_fastq('{sample}', '{number}', '{lane}', 'R3', '{suffix}', '{ext}'),
     outfile = touch(tmp_done('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'seq_file_rename'))
+  log:
+    sample_lane_log('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'seq_file_rename')
   shell:
     '''
-    cp {input.in1} {output.out1}
+    cp {input.in1} {output.out1} > {log} 2>&1
     '''
 
-#Debarcode the modality barcodes
+# Split one CT lane into modality-specific FASTQs using the antibody barcode.
 rule debarcode:
   input:
     script = workflow.basedir + '/scripts/debarcode.py',
@@ -136,6 +142,8 @@ rule debarcode:
     r2 = ct_debarcoded_fastq('{sample}', '{modality}', '{barcode}', '{number}', '{lane}', 'R2', '{suffix}', '{ext}'),
     r3 = ct_debarcoded_fastq('{sample}', '{modality}', '{barcode}', '{number}', '{lane}', 'R3', '{suffix}', '{ext}'),
     outfile = touch(modality_lane_done('{sample}', '{modality}', '{barcode}', '{number}', '{lane}', '{suffix}', '{ext}', 'debarcode'))
+  log:
+    modality_lane_log('{sample}', '{modality}', '{barcode}', '{number}', '{lane}', '{suffix}', '{ext}', 'debarcode')
   params:
     nbarcodes = len(antibodies_list),
     out_folder = lambda wildcards: proc_dir + '{sample}/{modality}_{barcode}/fastq/' \
@@ -150,6 +158,7 @@ rule debarcode:
   conda: '../envs/dbit-spatial-nanoct-rna-debarcode.yaml'
   shell:
     '''
+    {{
     python3 {input.script} \
     --input {input.fastq} \
     --out_prefix {params.out_folder} \
@@ -159,17 +168,20 @@ rule debarcode:
     --name {wildcards.sample} \
     --flush_every {params.flush_every} \
     --min_first_flush_ratio {params.min_first_flush_ratio} \
-    && python3 {params.check_outputs} {output.r1} {output.r2} {output.r3} \
-    2>&1
+    && python3 {params.check_outputs} {output.r1} {output.r2} {output.r3}
+    }} > {log} 2>&1
     '''
 
-#Replace the cellranger barcodes list
+# Temporarily replace Cell Ranger's barcode whitelist with the spatial whitelist.
+# The original file is backed up in processedData_dir/.done/ and restored later.
 rule get_barcodes_cellranger:
   input:
     spatial_barcodes = config['general']['spatial_barcodes_file'],
   output:
     backup = cellranger_barcodes_backup(),
     outfile = touch(global_done('get_barcodes_cellranger'))
+  log:
+    global_log('get_barcodes_cellranger')
   params:
     script = workflow.basedir + '/scripts/replace_cellranger_barcodes.py',
     cellranger_barcodes_file = cellranger_barcodes_path()
@@ -178,9 +190,10 @@ rule get_barcodes_cellranger:
     python3 {params.script} \
       --spatial-barcodes {input.spatial_barcodes} \
       --cellranger-barcodes {params.cellranger_barcodes_file} \
-      --backup {output.backup}
+      --backup {output.backup} > {log} 2>&1
     '''
 
+# Restore the original Cell Ranger whitelist after every Cell Ranger job finished.
 rule restore_cellranger_barcodes:
   input:
     backup = cellranger_barcodes_backup(),
@@ -190,6 +203,8 @@ rule restore_cellranger_barcodes:
     ]
   output:
     outfile = touch(global_done('restore_cellranger_barcodes'))
+  log:
+    global_log('restore_cellranger_barcodes')
   params:
     script = workflow.basedir + '/scripts/restore_cellranger_barcodes.py',
     cellranger_barcodes_file = cellranger_barcodes_path()
@@ -197,10 +212,10 @@ rule restore_cellranger_barcodes:
     '''
     python3 {params.script} \
       --cellranger-barcodes {params.cellranger_barcodes_file} \
-      --backup {input.backup}
+      --backup {input.backup} > {log} 2>&1
     '''
 
-#Run cellranger
+# Run Cell Ranger ATAC on the debarcoded FASTQs for one CT modality.
 rule run_cellranger:
   input:
     in1 = lambda wildcards: [
@@ -230,22 +245,25 @@ rule run_cellranger:
     ],
     infile2 = global_done('get_barcodes_cellranger')
   output:
-    bam = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_bam.bam',
-    bai = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_bam.bam.bai',
-    frag = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/fragments.tsv.gz',
-    meta = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/singlecell.csv',
-    peaks = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/peaks.bed',
+    bam = ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'possorted_bam.bam'),
+    bai = ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'possorted_bam.bam.bai'),
+    frag = ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'fragments.tsv.gz'),
+    meta = ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'singlecell.csv'),
+    peaks = ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'peaks.bed'),
     outfile = touch(modality_done('{sample}', '{modality}', '{barcode}', 'run_cellranger'))
+  log:
+    modality_log('{sample}', '{modality}', '{barcode}', 'run_cellranger')
   params:
     cellranger_software = config['general']['cellranger']['software_bin'],
     cellranger_ref = config['general']['cellranger']['reference_path'],
     processed_dir = proc_dir,
     cellranger_mem = config['general']['cellranger']['mem'],
-    fastq_folder = proc_dir + '{sample}/{modality}_{barcode}/fastq/barcode_{barcode}/',
+    fastq_folder = ct_modality_dir('{sample}', '{modality}', '{barcode}') + '/fastq/barcode_{barcode}/',
     check_outputs = workflow.basedir + '/scripts/check_outputs.py'
   threads: config['general']['cellranger']['core']
   shell:
     '''
+    {{
     rm -rf {params.processed_dir}{wildcards.sample}/{wildcards.modality}_{wildcards.barcode}/cellranger/;
     cd {params.processed_dir}{wildcards.sample}/{wildcards.modality}_{wildcards.barcode}/;
     {params.cellranger_software} count \
@@ -256,15 +274,19 @@ rule run_cellranger:
       --localcores={threads} \
       --localmem={params.cellranger_mem}
     python3 {params.check_outputs} {output.bam} {output.bai} {output.frag} {output.meta} {output.peaks}
+    }} > {log} 2>&1
     '''
 
+# Name-sort Cell Ranger BAM so paired reads are adjacent for LA duplicate removal.
 rule bam_to_namesorted:
     input:
-        bam = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_bam.bam',
+        bam = ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'possorted_bam.bam'),
         infile = modality_done('{sample}', '{modality}', '{barcode}', 'run_cellranger'),
     output:
-        bam = temp(proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/namesorted_bam.bam'),
+        bam = temp(ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'namesorted_bam.bam')),
         outfile = touch(modality_done('{sample}', '{modality}', '{barcode}', 'bam_to_namesorted')),
+    log:
+        modality_log('{sample}', '{modality}', '{barcode}', 'bam_to_namesorted')
     params:
         tempfolder = config['general']['tempdir'],
         check_outputs = workflow.basedir + '/scripts/check_outputs.py'
@@ -273,16 +295,23 @@ rule bam_to_namesorted:
         mem_mb = config['general'].get('samtools_mem_mb', 32000)
     conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
     shell:
-        'samtools sort -T {params.tempfolder} -@ {threads} -n -o {output.bam} {input.bam}; '
-        'python3 {params.check_outputs} {output.bam} '
+        '''
+        {{
+        samtools sort -T {params.tempfolder} -@ {threads} -n -o {output.bam} {input.bam};
+        python3 {params.check_outputs} {output.bam}
+        }} > {log} 2>&1
+        '''
 
+# Remove linear amplification duplicates while keeping PCR duplicates.
 rule remove_LA_duplicates:
     input:
-        bam = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/namesorted_bam.bam',
+        bam = ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'namesorted_bam.bam'),
         infile = modality_done('{sample}', '{modality}', '{barcode}', 'bam_to_namesorted'),
     output:
-        bam = temp(proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/namesorted_noLA_duplicates_bam.bam'),
+        bam = temp(ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'namesorted_noLA_duplicates_bam.bam')),
         outfile = touch(modality_done('{sample}', '{modality}', '{barcode}', 'remove_LA_duplicates')),
+    log:
+        modality_log('{sample}', '{modality}', '{barcode}', 'remove_LA_duplicates')
     params:
         script = workflow.basedir + '/scripts/remove_LA_duplicates.py',
         check_outputs = workflow.basedir + '/scripts/check_outputs.py',
@@ -290,17 +319,24 @@ rule remove_LA_duplicates:
     resources:
         mem_mb = config['general'].get('remove_LA_duplicates_mem_mb', 32000)
     shell:
-        'python3 {params.script} {input.bam} {output.bam}; '
-        'python3 {params.check_outputs} {output.bam}'
+        '''
+        {{
+        python3 {params.script} {input.bam} {output.bam};
+        python3 {params.check_outputs} {output.bam}
+        }} > {log} 2>&1
+        '''
 
+# Coordinate-sort and index the no-LA BAM for downstream tools.
 rule possort_noLA_bam_file:
     input:
-        bam = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/namesorted_noLA_duplicates_bam.bam',
+        bam = ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'namesorted_noLA_duplicates_bam.bam'),
         infile = modality_done('{sample}', '{modality}', '{barcode}', 'remove_LA_duplicates'),
     output:
-        bam   = temp(proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_noLA_duplicates_bam.bam'),
-        index = temp(proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_noLA_duplicates_bam.bam.bai'),
+        bam   = temp(ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'possorted_noLA_duplicates_bam.bam')),
+        index = temp(ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'possorted_noLA_duplicates_bam.bam.bai')),
         outfile = touch(modality_done('{sample}', '{modality}', '{barcode}', 'possort_noLA_bam')),
+    log:
+        modality_log('{sample}', '{modality}', '{barcode}', 'possort_noLA_bam')
     conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
     threads: config['general'].get('samtools_threads', 20)
     resources:
@@ -309,18 +345,25 @@ rule possort_noLA_bam_file:
         tempfolder = config['general']['tempdir'],
         check_outputs = workflow.basedir + '/scripts/check_outputs.py'
     shell:
-        'samtools sort -@ {threads} -T {params.tempfolder} -o {output.bam} {input.bam}; '
-        'samtools index {output.bam}; '
-        'python3 {params.check_outputs} {output.bam} {output.index} '
+        '''
+        {{
+        samtools sort -@ {threads} -T {params.tempfolder} -o {output.bam} {input.bam};
+        samtools index {output.bam};
+        python3 {params.check_outputs} {output.bam} {output.index}
+        }} > {log} 2>&1
+        '''
 
+# Convert the filtered no-LA BAM back into fragment format.
 rule bam_noLA_to_fragments_noLA:
     input:
-        bam = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_noLA_duplicates_bam.bam',
-        index= proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_noLA_duplicates_bam.bam.bai',
+        bam = ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'possorted_noLA_duplicates_bam.bam'),
+        index= ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'possorted_noLA_duplicates_bam.bam.bai'),
         infile = modality_done('{sample}', '{modality}', '{barcode}', 'possort_noLA_bam'),
     output:
-        fragments = temp(proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/fragments_noLA_duplicates.tsv'),
+        fragments = temp(ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'fragments_noLA_duplicates.tsv')),
         outfile = touch(modality_done('{sample}', '{modality}', '{barcode}', 'noLA_fragments')),
+    log:
+        modality_log('{sample}', '{modality}', '{barcode}', 'noLA_fragments')
     conda: '../envs/dbit-spatial-nanoct-rna-sinto.yaml'
     threads: config['general'].get('sinto_threads', 20)
     resources:
@@ -328,17 +371,24 @@ rule bam_noLA_to_fragments_noLA:
     params:
         check_outputs = workflow.basedir + '/scripts/check_outputs.py'
     shell:
-        'sinto fragments -b {input.bam} -f {output.fragments} -p {threads}; '
-        'python3 {params.check_outputs} {output.fragments}'
+        '''
+        {{
+        sinto fragments -b {input.bam} -f {output.fragments} -p {threads};
+        python3 {params.check_outputs} {output.fragments}
+        }} > {log} 2>&1
+        '''
 
+# Sort, bgzip, and tabix-index the no-LA fragments file.
 rule sort_sinto_output:
     input:
-        fragments = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/fragments_noLA_duplicates.tsv',
+        fragments = ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'fragments_noLA_duplicates.tsv'),
         infile = modality_done('{sample}', '{modality}', '{barcode}', 'noLA_fragments'),
     output:
-        fragments = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/fragments_noLA_duplicates.tsv.gz',
-        index      = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/fragments_noLA_duplicates.tsv.gz.tbi',
+        fragments = ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'fragments_noLA_duplicates.tsv.gz'),
+        index      = ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'fragments_noLA_duplicates.tsv.gz.tbi'),
         outfile = touch(modality_done('{sample}', '{modality}', '{barcode}', 'sort_noLA_fragments')),
+    log:
+        modality_log('{sample}', '{modality}', '{barcode}', 'sort_noLA_fragments')
     conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
     resources:
         mem_mb = config['general'].get('samtools_mem_mb', 16000)
@@ -346,18 +396,25 @@ rule sort_sinto_output:
         tempfolder = config['general']['tempdir'],
         check_outputs = workflow.basedir + '/scripts/check_outputs.py'
     shell:
-        'sort -T {params.tempfolder} -k1,1 -k2,2n {input.fragments} | bgzip > {output.fragments}; '
-        'tabix -p bed {output.fragments}; '
-        'python3 {params.check_outputs} {output.fragments} {output.index} '
+        '''
+        {{
+        sort -T {params.tempfolder} -k1,1 -k2,2n {input.fragments} | bgzip > {output.fragments};
+        tabix -p bed {output.fragments};
+        python3 {params.check_outputs} {output.fragments} {output.index}
+        }} > {log} 2>&1
+        '''
 
+# Create a normalized bigWig track from all Cell Ranger reads.
 rule bam_to_bw:
     input:
-        cellranger_bam = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_bam.bam',
-        cellranger_bai = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_bam.bam.bai',
+        cellranger_bam = ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'possorted_bam.bam'),
+        cellranger_bai = ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'possorted_bam.bam.bai'),
         infile = modality_done('{sample}', '{modality}', '{barcode}', 'run_cellranger'),
     output:
-        bigwig = proc_dir + '{sample}/{modality}_{barcode}/bigwig/all_reads.bw',
+        bigwig = ct_bigwig('{sample}', '{modality}', '{barcode}', 'all_reads.bw'),
         outfile = touch(modality_done('{sample}', '{modality}', '{barcode}', 'bam_to_bw')),
+    log:
+        modality_log('{sample}', '{modality}', '{barcode}', 'bam_to_bw')
     threads: config['general'].get('bamcoverage_threads', 20)
     conda: '../envs/dbit-spatial-nanoct-rna-bamcoverage.yaml'
     resources:
@@ -365,39 +422,53 @@ rule bam_to_bw:
     params:
         check_outputs = workflow.basedir + '/scripts/check_outputs.py'
     shell:
-        'bamCoverage -b {input.cellranger_bam} -o {output.bigwig} -p {threads} --minMappingQuality 5 '
-        ' --binSize 50 --centerReads --smoothLength 250 --normalizeUsing RPKM --ignoreDuplicates --extendReads; '
-        'python3 {params.check_outputs} {output.bigwig} '
+        '''
+        {{
+        bamCoverage -b {input.cellranger_bam} -o {output.bigwig} -p {threads} --minMappingQuality 5 \
+          --binSize 50 --centerReads --smoothLength 250 --normalizeUsing RPKM --ignoreDuplicates --extendReads;
+        python3 {params.check_outputs} {output.bigwig}
+        }} > {log} 2>&1
+        '''
 
+# Call broad peaks for one CT modality.
 rule run_macs_broad:
     input:
-        cellranger_bam=proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_bam.bam',
+        cellranger_bam=ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'possorted_bam.bam'),
         infile = modality_done('{sample}', '{modality}', '{barcode}', 'run_cellranger'),
     output:
-        broad_peaks=proc_dir + '{sample}/{modality}_{barcode}/peaks/macs_broad/{modality}_peaks.broadPeak',
+        broad_peaks=ct_macs_broad_peak('{sample}', '{modality}', '{barcode}'),
         outfile = touch(modality_done('{sample}', '{modality}', '{barcode}', 'macs_broad')),
+    log:
+        modality_log('{sample}', '{modality}', '{barcode}', 'macs_broad')
     params:
-        macs_outdir=proc_dir + '{sample}/{modality}_{barcode}/peaks/macs_broad/',
+        macs_outdir=ct_modality_dir('{sample}', '{modality}', '{barcode}') + '/peaks/macs_broad/',
         macs_genome=config['general']['macs_genome'],
         check_outputs = workflow.basedir + '/scripts/check_outputs.py'
     conda: '../envs/dbit-spatial-nanoct-rna-macs.yaml'
     resources:
         mem_mb = config['general'].get('macs_mem_mb', 16000)
     shell:
-        'macs2 callpeak -t {input.cellranger_bam} -g {params.macs_genome} -f BAMPE -n {wildcards.modality} '
-        '--outdir {params.macs_outdir} --llocal 100000 --keep-dup 1 --broad-cutoff 0.1 '
-        '--max-gap 1000 --broad 2>&1; '
-        'python3 {params.check_outputs} {output.broad_peaks} '
+        '''
+        {{
+        macs2 callpeak -t {input.cellranger_bam} -g {params.macs_genome} -f BAMPE -n {wildcards.modality} \
+          --outdir {params.macs_outdir} --llocal 100000 --keep-dup 1 --broad-cutoff 0.1 \
+          --max-gap 1000 --broad;
+        python3 {params.check_outputs} {output.broad_peaks}
+        }} > {log} 2>&1
+        '''
 
+# Count cell barcodes among reads overlapping called peaks.
 rule barcode_metrics_peaks:
     input:
-        bam=proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_bam.bam',
-        peaks=proc_dir + '{sample}/{modality}_{barcode}/peaks/macs_broad/{modality}_peaks.broadPeak',
+        bam=ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'possorted_bam.bam'),
+        peaks=ct_macs_broad_peak('{sample}', '{modality}', '{barcode}'),
         infile1 = modality_done('{sample}', '{modality}', '{barcode}', 'run_cellranger'),
         infile2 = modality_done('{sample}', '{modality}', '{barcode}', 'macs_broad'),
     output:
-        overlap=proc_dir + '{sample}/{modality}_{barcode}/barcode_metrics/peaks_barcodes.txt',
+        overlap=ct_barcode_metrics('{sample}', '{modality}', '{barcode}', 'peaks_barcodes.txt'),
         outfile = touch(modality_done('{sample}', '{modality}', '{barcode}', 'barcode_metrics_peaks')),
+    log:
+        modality_log('{sample}', '{modality}', '{barcode}', 'barcode_metrics_peaks')
     params:
         get_cell_barcode=workflow.basedir + '/scripts/awk/get_cell_barcode.awk',
         tmpdir=config['general']['tempdir']
@@ -405,17 +476,25 @@ rule barcode_metrics_peaks:
     resources:
         mem_mb = config['general'].get('samtools_mem_mb', 16000)
     shell:
-        'bedtools intersect -abam {input.bam} -b {input.peaks} -u | samtools view -f2 | '
-        'awk -f {params.get_cell_barcode} | sed "s/CB:Z://g" |  '
-        'sort -T {params.tmpdir} | uniq -c > {output.overlap} && [[ -s {output.overlap} ]] ; '
+        '''
+        {{
+        bedtools intersect -abam {input.bam} -b {input.peaks} -u | samtools view -f2 | \
+          awk -f {params.get_cell_barcode} | sed "s/CB:Z://g" | \
+          sort -T {params.tmpdir} | uniq -c > {output.overlap};
+        [[ -s {output.overlap} ]]
+        }} > {log} 2>&1
+        '''
 
+# Count all cell barcodes in properly paired reads.
 rule barcode_metrics_all:
     input:
-        bam=proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_bam.bam',
+        bam=ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'possorted_bam.bam'),
         infile = modality_done('{sample}', '{modality}', '{barcode}', 'run_cellranger'),
     output:
-        all_bcd=proc_dir + '{sample}/{modality}_{barcode}/barcode_metrics/all_barcodes.txt',
+        all_bcd=ct_barcode_metrics('{sample}', '{modality}', '{barcode}', 'all_barcodes.txt'),
         outfile = touch(modality_done('{sample}', '{modality}', '{barcode}', 'barcode_metrics_all')),
+    log:
+        modality_log('{sample}', '{modality}', '{barcode}', 'barcode_metrics_all')
     params:
         get_cell_barcode=workflow.basedir + '/scripts/awk/get_cell_barcode.awk',
         tmpdir=config['general']['tempdir']
@@ -423,87 +502,110 @@ rule barcode_metrics_all:
     resources:
         mem_mb = config['general'].get('samtools_mem_mb', 16000)
     shell:
-        'mkdir -p {params.tmpdir}; '
-        'samtools view -f2 {input.bam}| '
-        'awk -f {params.get_cell_barcode} | sed "s/CB:Z://g" |  '
-        'sort -T {params.tmpdir} | uniq -c > {output.all_bcd} && [[ -s {output.all_bcd} ]] ; '
+        '''
+        {{
+        mkdir -p {params.tmpdir};
+        samtools view -f2 {input.bam} | awk -f {params.get_cell_barcode} | sed "s/CB:Z://g" | \
+          sort -T {params.tmpdir} | uniq -c > {output.all_bcd};
+        [[ -s {output.all_bcd} ]]
+        }} > {log} 2>&1
+        '''
 
+# Remove heavy intermediate Cell Ranger folders while keeping outs/.
 rule clean_cellranger_output:
     input:
-        bam = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_bam.bam',
-        frag = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/fragments.tsv.gz',
-        meta = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/singlecell.csv',
-        peaks = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/peaks.bed',
+        bam = ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'possorted_bam.bam'),
+        frag = ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'fragments.tsv.gz'),
+        meta = ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'singlecell.csv'),
+        peaks = ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'peaks.bed'),
         infile = modality_done('{sample}', '{modality}', '{barcode}', 'run_cellranger'),
     output:
         outfile = touch(modality_done('{sample}', '{modality}', '{barcode}', 'clean_cellranger'))
+    log:
+        modality_log('{sample}', '{modality}', '{barcode}', 'clean_cellranger')
     params:
-        cellranger_folder = proc_dir + '{sample}/{modality}_{barcode}/cellranger/'
+        cellranger_folder = ct_modality_dir('{sample}', '{modality}', '{barcode}') + '/cellranger/'
     shell:
-        'find {params.cellranger_folder} -mindepth 1 -maxdepth 1 ! -name outs -exec rm -rf {{}} +; '
+        'find {params.cellranger_folder} -mindepth 1 -maxdepth 1 ! -name outs -exec rm -rf {{}} + > {log} 2>&1'
 
+# Convert configured spatial barcodes to Cell Ranger-style cell IDs with "-1".
 rule spatial_barcodes_to_cells:
     input:
         spatial_barcodes = config['general']['spatial_barcodes_file']
     output:
         cells = proc_dir + 'all_spatial_cells.txt',
         outfile = touch(global_done('all_spatial_cells')),
+    log:
+        global_log('all_spatial_cells')
     params:
         add_1_to_cells = workflow.basedir + '/scripts/awk/add_1_to_cells.awk'
     shell:
-        'awk -f {params.add_1_to_cells} {input.spatial_barcodes} > {output.cells} && [[ -s {output.cells} ]]'
+        '''
+        {{
+        awk -f {params.add_1_to_cells} {input.spatial_barcodes} > {output.cells};
+        [[ -s {output.cells} ]]
+        }} > {log} 2>&1
+        '''
 
 rule create_matrix_peaks:
-    # Requires fragtk installation (https://github.com/stuart-lab/fragtk)
+    # Count fragments over MACS broad peaks with fragtk.
     input:
-        frag  = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/fragments.tsv.gz',
-        peaks = proc_dir + '{sample}/{modality}_{barcode}/peaks/macs_broad/{modality}_peaks.broadPeak',
+        frag  = ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'fragments.tsv.gz'),
+        peaks = ct_macs_broad_peak('{sample}', '{modality}', '{barcode}'),
         cells = proc_dir + 'all_spatial_cells.txt',
         infile1 = modality_done('{sample}', '{modality}', '{barcode}', 'run_cellranger'),
         infile2 = modality_done('{sample}', '{modality}', '{barcode}', 'macs_broad'),
         infile3 = global_done('all_spatial_cells'),
     output:
-        folder   = directory(proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_peaks/'),
+        folder   = directory(ct_matrix_dir('{sample}', '{modality}', '{barcode}', 'matrix_peaks')),
         outfile = touch(modality_done('{sample}', '{modality}', '{barcode}', 'matrix_peaks')),
+    log:
+        modality_log('{sample}', '{modality}', '{barcode}', 'matrix_peaks')
     conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
     params:
-        matrix_dir = proc_dir + '{sample}/{modality}_{barcode}/matrix/',
-        matrix_final = proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_peaks',
+        matrix_dir = ct_matrix_base('{sample}', '{modality}', '{barcode}'),
+        matrix_final = ct_matrix_base('{sample}', '{modality}', '{barcode}') + '/matrix_peaks',
         matrix_tmp = matrix_tmp_dir('{sample}', '{modality}', '{barcode}', 'matrix_peaks'),
         fragtk = config['general']['fragtk_bin'],
         check_outputs = workflow.basedir + '/scripts/check_outputs.py',
     shell:
         '''
+        {{
         mkdir -p {params.matrix_dir};
         rm -rf {params.matrix_tmp} {output.folder};
         {params.fragtk} matrix -f {input.frag} -b {input.peaks} -c {input.cells} -o {params.matrix_tmp};
         python3 {params.check_outputs} --dirs {params.matrix_tmp};
         mv {params.matrix_tmp} {params.matrix_final}
+        }} > {log} 2>&1
         '''
 
+# Generate fixed-width genomic bins and count fragments over them with fragtk.
 rule create_matrix_bins:
     input:
-        bam   = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_bam.bam',
-        bai   = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_bam.bam.bai',
-        frag  = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/fragments.tsv.gz',
+        bam   = ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'possorted_bam.bam'),
+        bai   = ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'possorted_bam.bam.bai'),
+        frag  = ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'fragments.tsv.gz'),
         cells = proc_dir + 'all_spatial_cells.txt',
         infile1 = modality_done('{sample}', '{modality}', '{barcode}', 'run_cellranger'),
         infile2 = global_done('all_spatial_cells'),
     output:
-        folder     = directory(proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_bin_{bins}/'),
-        chromsizes = temp(proc_dir + '{sample}/{modality}_{barcode}/chromsizes_{bins}.txt'),
-        windows    = temp(proc_dir + '{sample}/{modality}_{barcode}/windows_{bins}.txt'),
+        folder     = directory(ct_matrix_dir('{sample}', '{modality}', '{barcode}', 'matrix_bin_{bins}')),
+        chromsizes = temp(ct_modality_dir('{sample}', '{modality}', '{barcode}') + '/chromsizes_{bins}.txt'),
+        windows    = temp(ct_modality_dir('{sample}', '{modality}', '{barcode}') + '/windows_{bins}.txt'),
         outfile    = touch(modality_done('{sample}', '{modality}', '{barcode}', 'matrix_bin_{bins}')),
+    log:
+        modality_log('{sample}', '{modality}', '{barcode}', 'matrix_bin_{bins}')
     conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
     params:
         get_chrom_sizes = workflow.basedir + '/scripts/awk/get_chrom_sizes.awk',
-        matrix_dir = proc_dir + '{sample}/{modality}_{barcode}/matrix/',
-        matrix_final = proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_bin_{bins}',
+        matrix_dir = ct_matrix_base('{sample}', '{modality}', '{barcode}'),
+        matrix_final = ct_matrix_base('{sample}', '{modality}', '{barcode}') + '/matrix_bin_{bins}',
         matrix_tmp = matrix_tmp_dir('{sample}', '{modality}', '{barcode}', 'matrix_bin_{bins}'),
         fragtk = config['general']['fragtk_bin'],
         check_outputs = workflow.basedir + '/scripts/check_outputs.py',
     shell:
         """
+        {{
         mkdir -p {params.matrix_dir};
         rm -rf {params.matrix_tmp} {output.folder};
         samtools idxstats {input.bam} | awk -f {params.get_chrom_sizes} > {output.chromsizes};
@@ -512,31 +614,36 @@ rule create_matrix_bins:
         {params.fragtk} matrix -f {input.frag} -b {output.windows} -c {input.cells} -o {params.matrix_tmp};
         python3 {params.check_outputs} --dirs {params.matrix_tmp};
         mv {params.matrix_tmp} {params.matrix_final};
+        }} > {log} 2>&1
         """
     
+# Build promoter-extended gene intervals and count fragments over those regions.
 rule create_genebody_and_promoter_matrix:
     input:
         cellranger_gtf = config['general']['cellranger']['reference_path'] + 'genes/genes.gtf.gz',
-        frag           = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/fragments.tsv.gz',
+        frag           = ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'fragments.tsv.gz'),
         cells          = proc_dir + 'all_spatial_cells.txt',
         infile1        = modality_done('{sample}', '{modality}', '{barcode}', 'run_cellranger'),
         infile2        = global_done('all_spatial_cells'),
     output:
-        genebody_gtf = proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_genes/genebody_and_promoter.gtf',
-        genebody_bed = proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_genes/genebody_and_promoter.bed',
-        gene_names   = proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_genes/gene_names.txt',
-        folder       = directory(proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_genes/'),
+        genebody_gtf = ct_matrix_file('{sample}', '{modality}', '{barcode}', 'matrix_genes', 'genebody_and_promoter.gtf'),
+        genebody_bed = ct_matrix_file('{sample}', '{modality}', '{barcode}', 'matrix_genes', 'genebody_and_promoter.bed'),
+        gene_names   = ct_matrix_file('{sample}', '{modality}', '{barcode}', 'matrix_genes', 'gene_names.txt'),
+        folder       = directory(ct_matrix_dir('{sample}', '{modality}', '{barcode}', 'matrix_genes')),
         outfile      = touch(modality_done('{sample}', '{modality}', '{barcode}', 'matrix_genes')),
+    log:
+        modality_log('{sample}', '{modality}', '{barcode}', 'matrix_genes')
     conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
     params:
         script = workflow.basedir + '/scripts/filter_cellranger_gtf_file.py',
-        matrix_dir = proc_dir + '{sample}/{modality}_{barcode}/matrix/',
-        matrix_final = proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_genes',
+        matrix_dir = ct_matrix_base('{sample}', '{modality}', '{barcode}'),
+        matrix_final = ct_matrix_base('{sample}', '{modality}', '{barcode}') + '/matrix_genes',
         matrix_tmp = matrix_tmp_dir('{sample}', '{modality}', '{barcode}', 'matrix_genes'),
         fragtk = config['general']['fragtk_bin'],
         check_outputs = workflow.basedir + '/scripts/check_outputs.py',
     shell:
         """
+        {{
         mkdir -p {params.matrix_dir};
         rm -rf {params.matrix_tmp} {output.folder};
         mkdir -p {params.matrix_tmp};
@@ -546,4 +653,5 @@ rule create_genebody_and_promoter_matrix:
         {params.fragtk} matrix -f {input.frag} -b {params.matrix_tmp}/genebody_and_promoter.bed -c {input.cells} -o {params.matrix_tmp};
         python3 {params.check_outputs} --dirs {params.matrix_tmp};
         mv {params.matrix_tmp} {params.matrix_final};
+        }} > {log} 2>&1
         """
