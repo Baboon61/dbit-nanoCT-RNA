@@ -38,48 +38,48 @@ rule all:
     ],
     run_cellranger=[
       proc_dir + '{sample}/{modality}_{barcode}/{sample}_run_cellranger.done'.format( \
-      modality=modality,barcode=barcodes_dict[res['id']][modality], sample=res['id']) \
-      for sample_id in samples_list for modality in barcodes_dict[sample_id].keys() for res in get_fastq_info_from_folder(raw_dir, sample_id)
+      modality=modality,barcode=barcodes_dict[sample_id][modality], sample=sample_id) \
+      for sample_id in samples_list for modality in barcodes_dict[sample_id].keys()
     ],
     bigwig_all=[
       proc_dir + '{sample}/{modality}_{barcode}/bigwig/all_reads.bw.done'.format( \
-      modality=modality,barcode=barcodes_dict[res['id']][modality], sample=res['id']) \
-      for sample_id in samples_list for modality in barcodes_dict[sample_id].keys() for res in get_fastq_info_from_folder(raw_dir, sample_id)
+      modality=modality,barcode=barcodes_dict[sample_id][modality], sample=sample_id) \
+      for sample_id in samples_list for modality in barcodes_dict[sample_id].keys()
     ],
     macs_broad=[
       proc_dir + '{sample}/{modality}_{barcode}/peaks/macs_broad/{modality}_peaks.broadPeak.done'.format( \
-      modality=modality,barcode=barcodes_dict[res['id']][modality], sample=res['id']) \
-      for sample_id in samples_list for modality in barcodes_dict[sample_id].keys() for res in get_fastq_info_from_folder(raw_dir, sample_id)
+      modality=modality,barcode=barcodes_dict[sample_id][modality], sample=sample_id) \
+      for sample_id in samples_list for modality in barcodes_dict[sample_id].keys()
     ],
     barcodes_sum=[
       proc_dir + '{sample}/{modality}_{barcode}/barcode_metrics/all_barcodes.txt.done'.format( \
-      modality=modality,barcode=barcodes_dict[res['id']][modality], sample=res['id']) \
-      for sample_id in samples_list for modality in barcodes_dict[sample_id].keys() for res in get_fastq_info_from_folder(raw_dir, sample_id)
+      modality=modality,barcode=barcodes_dict[sample_id][modality], sample=sample_id) \
+      for sample_id in samples_list for modality in barcodes_dict[sample_id].keys()
     ],
     noLA_bam=[
       proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/fragments_noLA_duplicates.tsv.gz.done'.format( \
-      modality=modality,barcode=barcodes_dict[res['id']][modality], sample=res['id']) \
-      for sample_id in samples_list for modality in barcodes_dict[sample_id].keys() for res in get_fastq_info_from_folder(raw_dir, sample_id)
+      modality=modality,barcode=barcodes_dict[sample_id][modality], sample=sample_id) \
+      for sample_id in samples_list for modality in barcodes_dict[sample_id].keys()
     ],
     cellranger_cleanup = [
       proc_dir + '{sample}/{modality}_{barcode}/clean_cellranger.done'.format( \
-      modality=modality,barcode=barcodes_dict[res['id']][modality], sample=res['id']) \
-      for sample_id in samples_list for modality in barcodes_dict[sample_id].keys() for res in get_fastq_info_from_folder(raw_dir, sample_id)
+      modality=modality,barcode=barcodes_dict[sample_id][modality], sample=sample_id) \
+      for sample_id in samples_list for modality in barcodes_dict[sample_id].keys()
     ],
     matrix_peaks = [
       proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_peaks.done'.format( \
-      modality=modality,barcode=barcodes_dict[res['id']][modality], sample=res['id']) \
-      for sample_id in samples_list for modality in barcodes_dict[sample_id].keys() for res in get_fastq_info_from_folder(raw_dir, sample_id)
+      modality=modality,barcode=barcodes_dict[sample_id][modality], sample=sample_id) \
+      for sample_id in samples_list for modality in barcodes_dict[sample_id].keys()
     ],
     matrix_bins = [
       proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_bin_{binsize}.done'.format( \
-      modality=modality,barcode=barcodes_dict[res['id']][modality], sample=res['id'], binsize=binsize) \
-      for sample_id in samples_list for modality in barcodes_dict[sample_id].keys() for res in get_fastq_info_from_folder(raw_dir, sample_id) for binsize in config['general']['bin_sizes']
+      modality=modality,barcode=barcodes_dict[sample_id][modality], sample=sample_id, binsize=binsize) \
+      for sample_id in samples_list for modality in barcodes_dict[sample_id].keys() for binsize in config['general']['bin_sizes']
     ],
     matrix_genes = [
       proc_dir + '{sample}/{modality}_{barcode}/matrix/matrix_genes.done'.format( \
-      modality=modality,barcode=barcodes_dict[res['id']][modality], sample=res['id']) \
-      for sample_id in samples_list for modality in barcodes_dict[sample_id].keys() for res in get_fastq_info_from_folder(raw_dir, sample_id)
+      modality=modality,barcode=barcodes_dict[sample_id][modality], sample=sample_id) \
+      for sample_id in samples_list for modality in barcodes_dict[sample_id].keys()
     ],
 
 #Filter out read without PCR primer, high hamming distance
@@ -523,14 +523,14 @@ rule bam_noLA_to_fragments_noLA:
         index= proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_noLA_duplicates_bam.bam.bai',
         infile = proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/possorted_noLA_duplicates_bam.done',
     output:
-        fragmments = temp(proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/fragments_noLA_duplicates.tsv'),
+        fragments = temp(proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/fragments_noLA_duplicates.tsv'),
         outfile = touch(proc_dir + '{sample}/{modality}_{barcode}/cellranger/outs/fragments_noLA_duplicates.tsv.done'),
     conda: '../envs/dbit-spatial-nanoct-rna-sinto.yaml'
     threads: 20
     resources:
         mem_mb=16000
     shell:
-        'sinto fragments -b {input.bam} -f {output.fragmments} -p {threads}'
+        'sinto fragments -b {input.bam} -f {output.fragments} -p {threads}'
 
 rule sort_sinto_output:
     input:

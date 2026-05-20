@@ -3,7 +3,7 @@ import argparse
 import gzip
 import os
 
-parser = argparse.ArgumentParser(description='Filter cellranger gtf file and return genebody and promter gtf file and separate file with gene names')
+parser = argparse.ArgumentParser(description='Filter cellranger gtf file and return genebody and promoter gtf file and separate file with gene names')
 parser.add_argument('-i','--input', type=str, help='GTF file')
 parser.add_argument('-o','--output', type=str, help='Output GTF file')
 parser.add_argument('-n','--gene_names', type=str, help='Output gene names file')
@@ -25,16 +25,6 @@ def extend_promoter(line,by=2000):
     line[3] = str(line[3])
     line[4] = str(line[4])
     return line
-
-def check_gene_name(col9):
-    if "gene_name" in col9:
-        gname_col = "gene_name"
-    elif "gene_id" in col9:
-        gname_col = "gene_id"
-    else:
-        gname_col = col9.keys()[0]
-    return gname_col
-
 
 def main(args):
     if args.input.endswith(".gz"):
