@@ -1,3 +1,5 @@
+import glob
+
 # Keep read pairs where the PCR primer is found within the allowed mismatch rate.
 rule filter_primer:
   input:

@@ -1,6 +1,10 @@
 # Shared path helpers used by the CT and RNA workflows.
 # Keeping paths here avoids small naming drift between rule outputs and inputs.
 
+wildcard_constraints:
+  suffix = r"[0-9]+",
+  ext = r"(?:fastq|fq)(?:\.gz)?"
+
 # Raw FASTQs are discovered recursively below rawData_dir/<sample>/.
 def raw_fastq_glob(sample, number, lane, read, suffix, ext):
   return raw_dir + '{sample}/**/{sample}_{number}_{lane}_{read}_{suffix}.{ext}'.format(
