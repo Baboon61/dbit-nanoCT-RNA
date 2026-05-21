@@ -2,6 +2,7 @@ name: dbit-spatial-nanoct-rna-base
 channels:
   - conda-forge
   - bioconda
+  - defaults
 dependencies:
   - python=3.11
   - snakemake-minimal=7.24.0
