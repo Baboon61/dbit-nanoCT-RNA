@@ -21,5 +21,5 @@ python3 -m py_compile \
   workflow/scripts/write_pipeline_summary.py
 
 # Build the CT and RNA DAGs without running jobs.
-snakemake -n -s workflow/Snakefile_CT --use-conda --conda-frontend conda
-snakemake -n -s workflow/Snakefile_RNA --use-conda --conda-frontend conda
+snakemake -n -p -s workflow/Snakefile_CT --use-conda --conda-frontend conda
+snakemake -n -p -s workflow/Snakefile_RNA --use-conda --conda-frontend conda
