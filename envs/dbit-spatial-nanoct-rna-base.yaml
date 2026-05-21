@@ -5,6 +5,7 @@ channels:
   - defaults
 dependencies:
   - python=3.11
+  - cookiecutter
   - snakemake
   - python-htcondor
   - snakemake-executor-plugin-cluster-generic
