@@ -6,4 +6,5 @@ channels:
 dependencies:
   - python=3.11
   - snakemake-minimal=7.24.0
+  - htcondor
   - pyyaml
