@@ -6,4 +6,3 @@ channels:
 dependencies:
   - bbmap
   - pigz
-
