@@ -11,6 +11,8 @@ rule filter_primer:
     outfile = touch(qc_done('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'filter_primer'))
   log:
     sample_lane_log('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'filter_primer')
+  benchmark:
+    sample_lane_benchmark('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'filter_primer')
   params:
     k_length = len(config['general']['PCRprimer_sequence']),
     k_length_restrict = len(config['general']['PCRprimer_sequence'])+8,
@@ -50,6 +52,8 @@ rule filter_L1:
     outfile = touch(qc_done('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'filter_L1'))
   log:
     sample_lane_log('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'filter_L1')
+  benchmark:
+    sample_lane_benchmark('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'filter_L1')
   params:
     k_length = len(config['general']['linker1_sequence']),
     k_length_restrict = len(config['general']['linker1_sequence'])+80,
@@ -89,6 +93,8 @@ rule filter_L2:
     outfile = touch(qc_done('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'filter_L2'))
   log:
     sample_lane_log('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'filter_L2')
+  benchmark:
+    sample_lane_benchmark('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'filter_L2')
   params:
     k_length = len(config['general']['linker2_sequence']),
     k_length_restrict = len(config['general']['linker2_sequence'])+40,

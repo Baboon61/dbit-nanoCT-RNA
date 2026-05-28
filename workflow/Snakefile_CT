@@ -6,6 +6,80 @@ cellranger_done_targets = [
   for sample_id in samples_list for modality in barcodes_dict[sample_id].keys()
 ]
 
+ct_tool_version_targets = [
+  tool_version(tool, '{sample}_{modality}_{barcode}_{context}'.format(
+    sample=sample_id,
+    modality=modality,
+    barcode=barcodes_dict[sample_id][modality],
+    context=context
+  ))
+  for sample_id in samples_list
+  for modality in barcodes_dict[sample_id].keys()
+  for tool, context in [
+    ('cellranger', 'run_cellranger'),
+    ('samtools', 'bam_to_namesorted'),
+    ('sinto', 'noLA_fragments'),
+    ('bamcoverage', 'bam_to_bw'),
+    ('macs2', 'macs_broad'),
+  ]
+] + [
+  tool_version(tool, '{sample}_{modality}_{barcode}_matrix_bin_{bins}'.format(
+    sample=sample_id,
+    modality=modality,
+    barcode=barcodes_dict[sample_id][modality],
+    bins=binsize
+  ))
+  for sample_id in samples_list
+  for modality in barcodes_dict[sample_id].keys()
+  for binsize in config['general']['bin_sizes']
+  for tool in ['samtools', 'bedtools', 'fragtk']
+]
+
+ct_rule_metrics_dependencies = [
+  qc_done(res['id'], res['number'], res['lane'], res['suffix'], res['ext'], step)
+  for sample_id in samples_list
+  for res in get_fastq_info_from_folder(raw_dir, sample_id)
+  for step in ['filter_primer', 'filter_L1', 'filter_L2']
+] + [
+  tmp_done(res['id'], res['number'], res['lane'], res['suffix'], res['ext'], step)
+  for sample_id in samples_list
+  for res in get_fastq_info_from_folder(raw_dir, sample_id)
+  for step in ['bc_process', 'seq_file_rename']
+] + [
+  modality_lane_done(res['id'], modality, barcodes_dict[res['id']][modality], res['number'], res['lane'], res['suffix'], res['ext'], 'debarcode')
+  for sample_id in samples_list
+  for modality in barcodes_dict[sample_id].keys()
+  for res in get_fastq_info_from_folder(raw_dir, sample_id)
+] + [
+  global_done('get_barcodes_cellranger'),
+  global_done('restore_cellranger_barcodes'),
+  global_done('all_spatial_cells'),
+] + [
+  modality_done(sample_id, modality, barcodes_dict[sample_id][modality], step)
+  for sample_id in samples_list
+  for modality in barcodes_dict[sample_id].keys()
+  for step in [
+    'run_cellranger',
+    'bam_to_namesorted',
+    'remove_LA_duplicates',
+    'possort_noLA_bam',
+    'noLA_fragments',
+    'sort_noLA_fragments',
+    'bam_to_bw',
+    'macs_broad',
+    'barcode_metrics_peaks',
+    'barcode_metrics_all',
+    'clean_cellranger',
+    'matrix_peaks',
+    'matrix_genes',
+  ]
+] + [
+  modality_done(sample_id, modality, barcodes_dict[sample_id][modality], 'matrix_bin_{binsize}'.format(binsize=binsize))
+  for sample_id in samples_list
+  for modality in barcodes_dict[sample_id].keys()
+  for binsize in config['general']['bin_sizes']
+]
+
 # Final CT targets. Most entries are .done gatekeepers so downstream rules wait
 # for upstream rules to finish completely, not just for a data file to appear.
 rule all:
@@ -76,6 +150,9 @@ rule all:
     pipeline_summary=[
       global_done('pipeline_summary')
     ],
+    rule_metrics_report=[
+      global_done('rule_metrics_report')
+    ],
 
 include: 'Snakefile_spatial_demux.smk'
 include: 'Snakefile_cellranger_whitelist.smk'
@@ -94,6 +171,8 @@ rule bc_process:
     outfile = touch(tmp_done('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'bc_process'))
   log:
     sample_lane_log('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'bc_process')
+  benchmark:
+    sample_lane_benchmark('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'bc_process')
   params:
     primer_length = len(config['general']['PCRprimer_sequence']),
     linker1_length = len(config['general']['linker1_sequence']),
@@ -130,6 +209,8 @@ rule seq_file_rename:
     outfile = touch(tmp_done('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'seq_file_rename'))
   log:
     sample_lane_log('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'seq_file_rename')
+  benchmark:
+    sample_lane_benchmark('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'seq_file_rename')
   shell:
     '''
     cp {input.in1} {output.out1} > {log} 2>&1
@@ -221,6 +302,7 @@ rule run_cellranger:
     frag = ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'fragments.tsv.gz'),
     meta = ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'singlecell.csv'),
     peaks = ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'peaks.bed'),
+    cellranger_version = tool_version('cellranger', '{sample}_{modality}_{barcode}_run_cellranger'),
     outfile = touch(modality_done('{sample}', '{modality}', '{barcode}', 'run_cellranger'))
   log:
     modality_log('{sample}', '{modality}', '{barcode}', 'run_cellranger')
@@ -232,11 +314,13 @@ rule run_cellranger:
     processed_dir = proc_dir,
     cellranger_mem = config['general']['cellranger']['mem'],
     fastq_folder = ct_modality_dir('{sample}', '{modality}', '{barcode}') + '/fastq/barcode_{barcode}/',
-    check_outputs = workflow.basedir + '/scripts/check_outputs.py'
+    check_outputs = workflow.basedir + '/scripts/check_outputs.py',
+    write_tool_version = workflow.basedir + '/scripts/write_tool_version.py'
   threads: config['general']['cellranger']['core']
   shell:
     '''
     {{
+    python3 {params.write_tool_version} --output {output.cellranger_version} -- {params.cellranger_software} --version;
     rm -rf {params.processed_dir}{wildcards.sample}/{wildcards.modality}_{wildcards.barcode}/cellranger/;
     cd {params.processed_dir}{wildcards.sample}/{wildcards.modality}_{wildcards.barcode}/;
     {params.cellranger_software} count \
@@ -257,6 +341,7 @@ rule bam_to_namesorted:
         infile = modality_done('{sample}', '{modality}', '{barcode}', 'run_cellranger'),
     output:
         bam = temp(ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'namesorted_bam.bam')),
+        samtools_version = tool_version('samtools', '{sample}_{modality}_{barcode}_bam_to_namesorted'),
         outfile = touch(modality_done('{sample}', '{modality}', '{barcode}', 'bam_to_namesorted')),
     log:
         modality_log('{sample}', '{modality}', '{barcode}', 'bam_to_namesorted')
@@ -264,7 +349,8 @@ rule bam_to_namesorted:
         modality_benchmark('{sample}', '{modality}', '{barcode}', 'bam_to_namesorted')
     params:
         tempfolder = config['general']['tempdir'],
-        check_outputs = workflow.basedir + '/scripts/check_outputs.py'
+        check_outputs = workflow.basedir + '/scripts/check_outputs.py',
+        write_tool_version = workflow.basedir + '/scripts/write_tool_version.py'
     threads: config['general'].get('samtools_threads', 20)
     resources:
         mem_mb = config['general'].get('samtools_mem_mb', 32000)
@@ -272,6 +358,7 @@ rule bam_to_namesorted:
     shell:
         '''
         {{
+        python3 {params.write_tool_version} --output {output.samtools_version} -- samtools --version;
         samtools sort -T {params.tempfolder} -@ {threads} -n -o {output.bam} {input.bam};
         python3 {params.check_outputs} {output.bam}
         }} > {log} 2>&1
@@ -314,6 +401,8 @@ rule possort_noLA_bam_file:
         outfile = touch(modality_done('{sample}', '{modality}', '{barcode}', 'possort_noLA_bam')),
     log:
         modality_log('{sample}', '{modality}', '{barcode}', 'possort_noLA_bam')
+    benchmark:
+        modality_benchmark('{sample}', '{modality}', '{barcode}', 'possort_noLA_bam')
     conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
     threads: config['general'].get('samtools_threads', 20)
     resources:
@@ -338,18 +427,23 @@ rule bam_noLA_to_fragments_noLA:
         infile = modality_done('{sample}', '{modality}', '{barcode}', 'possort_noLA_bam'),
     output:
         fragments = temp(ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'fragments_noLA_duplicates.tsv')),
+        sinto_version = tool_version('sinto', '{sample}_{modality}_{barcode}_noLA_fragments'),
         outfile = touch(modality_done('{sample}', '{modality}', '{barcode}', 'noLA_fragments')),
     log:
         modality_log('{sample}', '{modality}', '{barcode}', 'noLA_fragments')
+    benchmark:
+        modality_benchmark('{sample}', '{modality}', '{barcode}', 'noLA_fragments')
     conda: '../envs/dbit-spatial-nanoct-rna-sinto.yaml'
     threads: config['general'].get('sinto_threads', 20)
     resources:
         mem_mb=config['general'].get('sinto_mem_mb', 16000)
     params:
-        check_outputs = workflow.basedir + '/scripts/check_outputs.py'
+        check_outputs = workflow.basedir + '/scripts/check_outputs.py',
+        write_tool_version = workflow.basedir + '/scripts/write_tool_version.py'
     shell:
         '''
         {{
+        python3 {params.write_tool_version} --output {output.sinto_version} -- sinto --version;
         sinto fragments -b {input.bam} -f {output.fragments} -p {threads};
         python3 {params.check_outputs} {output.fragments}
         }} > {log} 2>&1
@@ -366,6 +460,8 @@ rule sort_sinto_output:
         outfile = touch(modality_done('{sample}', '{modality}', '{barcode}', 'sort_noLA_fragments')),
     log:
         modality_log('{sample}', '{modality}', '{barcode}', 'sort_noLA_fragments')
+    benchmark:
+        modality_benchmark('{sample}', '{modality}', '{barcode}', 'sort_noLA_fragments')
     conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
     resources:
         mem_mb = config['general'].get('samtools_mem_mb', 16000)
@@ -389,18 +485,23 @@ rule bam_to_bw:
         infile = modality_done('{sample}', '{modality}', '{barcode}', 'run_cellranger'),
     output:
         bigwig = ct_bigwig('{sample}', '{modality}', '{barcode}', 'all_reads.bw'),
+        bamcoverage_version = tool_version('bamcoverage', '{sample}_{modality}_{barcode}_bam_to_bw'),
         outfile = touch(modality_done('{sample}', '{modality}', '{barcode}', 'bam_to_bw')),
     log:
         modality_log('{sample}', '{modality}', '{barcode}', 'bam_to_bw')
+    benchmark:
+        modality_benchmark('{sample}', '{modality}', '{barcode}', 'bam_to_bw')
     threads: config['general'].get('bamcoverage_threads', 20)
     conda: '../envs/dbit-spatial-nanoct-rna-bamcoverage.yaml'
     resources:
         mem_mb = config['general'].get('bamcoverage_mem_mb', 16000)
     params:
-        check_outputs = workflow.basedir + '/scripts/check_outputs.py'
+        check_outputs = workflow.basedir + '/scripts/check_outputs.py',
+        write_tool_version = workflow.basedir + '/scripts/write_tool_version.py'
     shell:
         '''
         {{
+        python3 {params.write_tool_version} --output {output.bamcoverage_version} -- bamCoverage --version;
         bamCoverage -b {input.cellranger_bam} -o {output.bigwig} -p {threads} --minMappingQuality 5 \
           --binSize 50 --centerReads --smoothLength 250 --normalizeUsing RPKM --ignoreDuplicates --extendReads;
         python3 {params.check_outputs} {output.bigwig}
@@ -414,19 +515,24 @@ rule run_macs_broad:
         infile = modality_done('{sample}', '{modality}', '{barcode}', 'run_cellranger'),
     output:
         broad_peaks=ct_macs_broad_peak('{sample}', '{modality}', '{barcode}'),
+        macs2_version = tool_version('macs2', '{sample}_{modality}_{barcode}_macs_broad'),
         outfile = touch(modality_done('{sample}', '{modality}', '{barcode}', 'macs_broad')),
     log:
         modality_log('{sample}', '{modality}', '{barcode}', 'macs_broad')
+    benchmark:
+        modality_benchmark('{sample}', '{modality}', '{barcode}', 'macs_broad')
     params:
         macs_outdir=ct_modality_dir('{sample}', '{modality}', '{barcode}') + '/peaks/macs_broad/',
         macs_genome=config['general']['macs_genome'],
-        check_outputs = workflow.basedir + '/scripts/check_outputs.py'
+        check_outputs = workflow.basedir + '/scripts/check_outputs.py',
+        write_tool_version = workflow.basedir + '/scripts/write_tool_version.py'
     conda: '../envs/dbit-spatial-nanoct-rna-macs.yaml'
     resources:
         mem_mb = config['general'].get('macs_mem_mb', 16000)
     shell:
         '''
         {{
+        python3 {params.write_tool_version} --output {output.macs2_version} -- macs2 --version;
         macs2 callpeak -t {input.cellranger_bam} -g {params.macs_genome} -f BAMPE -n {wildcards.modality} \
           --outdir {params.macs_outdir} --llocal 100000 --keep-dup 1 --broad-cutoff 0.1 \
           --max-gap 1000 --broad;
@@ -446,6 +552,8 @@ rule barcode_metrics_peaks:
         outfile = touch(modality_done('{sample}', '{modality}', '{barcode}', 'barcode_metrics_peaks')),
     log:
         modality_log('{sample}', '{modality}', '{barcode}', 'barcode_metrics_peaks')
+    benchmark:
+        modality_benchmark('{sample}', '{modality}', '{barcode}', 'barcode_metrics_peaks')
     params:
         get_cell_barcode=workflow.basedir + '/scripts/awk/get_cell_barcode.awk',
         tmpdir=config['general']['tempdir']
@@ -472,6 +580,8 @@ rule barcode_metrics_all:
         outfile = touch(modality_done('{sample}', '{modality}', '{barcode}', 'barcode_metrics_all')),
     log:
         modality_log('{sample}', '{modality}', '{barcode}', 'barcode_metrics_all')
+    benchmark:
+        modality_benchmark('{sample}', '{modality}', '{barcode}', 'barcode_metrics_all')
     params:
         get_cell_barcode=workflow.basedir + '/scripts/awk/get_cell_barcode.awk',
         tmpdir=config['general']['tempdir']
@@ -500,6 +610,8 @@ rule clean_cellranger_output:
         outfile = touch(modality_done('{sample}', '{modality}', '{barcode}', 'clean_cellranger'))
     log:
         modality_log('{sample}', '{modality}', '{barcode}', 'clean_cellranger')
+    benchmark:
+        modality_benchmark('{sample}', '{modality}', '{barcode}', 'clean_cellranger')
     params:
         cellranger_folder = ct_modality_dir('{sample}', '{modality}', '{barcode}') + '/cellranger/'
     shell:
@@ -514,6 +626,8 @@ rule spatial_barcodes_to_cells:
         outfile = touch(global_done('all_spatial_cells')),
     log:
         global_log('all_spatial_cells')
+    benchmark:
+        global_benchmark('all_spatial_cells')
     params:
         add_1_to_cells = workflow.basedir + '/scripts/awk/add_1_to_cells.awk'
     shell:
@@ -571,6 +685,9 @@ rule create_matrix_bins:
         folder     = directory(ct_matrix_dir('{sample}', '{modality}', '{barcode}', 'matrix_bin_{bins}')),
         chromsizes = temp(ct_modality_dir('{sample}', '{modality}', '{barcode}') + '/chromsizes_{bins}.txt'),
         windows    = temp(ct_modality_dir('{sample}', '{modality}', '{barcode}') + '/windows_{bins}.txt'),
+        samtools_version = tool_version('samtools', '{sample}_{modality}_{barcode}_matrix_bin_{bins}'),
+        bedtools_version = tool_version('bedtools', '{sample}_{modality}_{barcode}_matrix_bin_{bins}'),
+        fragtk_version = tool_version('fragtk', '{sample}_{modality}_{barcode}_matrix_bin_{bins}'),
         outfile    = touch(modality_done('{sample}', '{modality}', '{barcode}', 'matrix_bin_{bins}')),
     log:
         modality_log('{sample}', '{modality}', '{barcode}', 'matrix_bin_{bins}')
@@ -584,11 +701,15 @@ rule create_matrix_bins:
         matrix_tmp = matrix_tmp_dir('{sample}', '{modality}', '{barcode}', 'matrix_bin_{bins}'),
         fragtk = config['general']['fragtk_bin'],
         check_outputs = workflow.basedir + '/scripts/check_outputs.py',
+        write_tool_version = workflow.basedir + '/scripts/write_tool_version.py',
     shell:
         """
         {{
         mkdir -p {params.matrix_dir};
         rm -rf {params.matrix_tmp} {output.folder};
+        python3 {params.write_tool_version} --output {output.samtools_version} -- samtools --version;
+        python3 {params.write_tool_version} --output {output.bedtools_version} -- bedtools --version;
+        python3 {params.write_tool_version} --output {output.fragtk_version} -- {params.fragtk} --version;
         samtools idxstats {input.bam} | awk -f {params.get_chrom_sizes} > {output.chromsizes};
         bedtools makewindows -g {output.chromsizes} -w {wildcards.bins} > {output.windows};
         python3 {params.check_outputs} {output.chromsizes} {output.windows};
@@ -645,14 +766,37 @@ rule pipeline_summary:
         matrix_genes = [
           modality_done(sample_id, modality, barcodes_dict[sample_id][modality], 'matrix_genes') \
           for sample_id in samples_list for modality in barcodes_dict[sample_id].keys()
-        ]
+        ],
+        tool_versions = ct_tool_version_targets
     output:
         report = global_report('pipeline_summary_CT.json'),
         outfile = touch(global_done('pipeline_summary'))
     log:
         global_log('pipeline_summary')
+    benchmark:
+        global_benchmark('pipeline_summary')
     params:
         script = workflow.basedir + '/scripts/write_pipeline_summary.py',
+        config_file = workflow.basedir + '/../config/config_CT.yaml'
+    shell:
+        '''
+        python3 {params.script} --config {params.config_file} --workflow CT --output {output.report} --tool-version-files {input.tool_versions} > {log} 2>&1
+        '''
+
+# Write a JSON report with per-rule runtime and output-size/count metrics.
+rule rule_metrics_report:
+    input:
+        dependencies = ct_rule_metrics_dependencies,
+        pipeline_summary = global_done('pipeline_summary')
+    output:
+        report = global_report('rule_metrics_CT.json'),
+        outfile = touch(global_done('rule_metrics_report'))
+    log:
+        global_log('rule_metrics_report')
+    benchmark:
+        global_benchmark('rule_metrics_report')
+    params:
+        script = workflow.basedir + '/scripts/write_rule_metrics_report.py',
         config_file = workflow.basedir + '/../config/config_CT.yaml'
     shell:
         '''

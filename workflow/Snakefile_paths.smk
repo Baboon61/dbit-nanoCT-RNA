@@ -187,6 +187,11 @@ def global_log(name):
     name=name
   )
 
+def global_benchmark(name):
+  return proc_dir + 'benchmarks/{name}.txt'.format(
+    name=name
+  )
+
 def sample_log(sample, name):
   return proc_dir + '{sample}/logs/{name}.log'.format(
     sample=sample,
@@ -222,9 +227,25 @@ def global_report(name):
     name=name
   )
 
+def tool_version(tool, context):
+  return proc_dir + '.versions/{tool}/{context}.txt'.format(
+    tool=tool,
+    context=context
+  )
+
 def sample_benchmark(sample, name):
   return proc_dir + '{sample}/benchmarks/{name}.txt'.format(
     sample=sample,
+    name=name
+  )
+
+def sample_lane_benchmark(sample, number, lane, suffix, ext, name):
+  return proc_dir + '{sample}/benchmarks/{name}_{number}_{lane}_{suffix}.{ext}.txt'.format(
+    sample=sample,
+    number=number,
+    lane=lane,
+    suffix=suffix,
+    ext=ext,
     name=name
   )
 

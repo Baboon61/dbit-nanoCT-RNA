@@ -6,6 +6,29 @@ cellranger_done_targets = [
   for sample_id in samples_list
 ]
 
+rna_tool_version_targets = [
+  tool_version('cellranger', '{sample}_run_cellranger'.format(sample=sample_id))
+  for sample_id in samples_list
+]
+
+rna_rule_metrics_dependencies = [
+  qc_done(res['id'], res['number'], res['lane'], res['suffix'], res['ext'], step)
+  for sample_id in samples_list
+  for res in get_fastq_info_from_folder(raw_dir, sample_id)
+  for step in ['filter_primer', 'filter_L1', 'filter_L2']
+] + [
+  tmp_done(res['id'], res['number'], res['lane'], res['suffix'], res['ext'], step)
+  for sample_id in samples_list
+  for res in get_fastq_info_from_folder(raw_dir, sample_id)
+  for step in ['bc_process', 'seq_file_rename']
+] + [
+  global_done('get_barcodes_cellranger'),
+  global_done('restore_cellranger_barcodes'),
+] + [
+  sample_done(sample_id, 'run_cellranger')
+  for sample_id in samples_list
+]
+
 # Final RNA targets. Done files are used as completion gatekeepers.
 rule all:
   input:
@@ -38,6 +61,9 @@ rule all:
     ],
     pipeline_summary=[
       global_done('pipeline_summary')
+    ],
+    rule_metrics_report=[
+      global_done('rule_metrics_report')
     ]
 
 include: 'Snakefile_spatial_demux.smk'
@@ -55,6 +81,8 @@ rule bc_process:
     outfile = touch(tmp_done('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'bc_process'))
   log:
     sample_lane_log('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'bc_process')
+  benchmark:
+    sample_lane_benchmark('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'bc_process')
   params:
     primer_length = len(config['general']['PCRprimer_sequence']),
     linker1_length = len(config['general']['linker1_sequence']),
@@ -88,6 +116,8 @@ rule seq_file_rename:
     outfile = touch(tmp_done('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'seq_file_rename'))
   log:
     sample_lane_log('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'seq_file_rename')
+  benchmark:
+    sample_lane_benchmark('{sample}', '{number}', '{lane}', '{suffix}', '{ext}', 'seq_file_rename')
   shell:
     '''
     cp {input.in1} {output.out1} > {log} 2>&1
@@ -103,6 +133,7 @@ rule run_cellranger:
     infile3 = global_done('get_barcodes_cellranger')
   output:
     bam = rna_cellranger_out('{sample}', 'possorted_genome_bam.bam'),
+    cellranger_version = tool_version('cellranger', '{sample}_run_cellranger'),
     outfile = touch(sample_done('{sample}', 'run_cellranger'))
   log:
     sample_log('{sample}', 'run_cellranger')
@@ -114,11 +145,13 @@ rule run_cellranger:
     processed_dir = proc_dir,
     cellranger_mem = config['general']['cellranger']['mem'],
     fastq_folder = proc_dir + '{sample}/tmp_data/',
-    check_outputs = workflow.basedir + '/scripts/check_outputs.py'
+    check_outputs = workflow.basedir + '/scripts/check_outputs.py',
+    write_tool_version = workflow.basedir + '/scripts/write_tool_version.py'
   threads: config['general']['cellranger']['core']
   shell:
     '''
     {{
+    python3 {params.write_tool_version} --output {output.cellranger_version} -- {params.cellranger_software} --version;
     rm -rf {params.processed_dir}{wildcards.sample}/cellranger/;
     cd {params.processed_dir}{wildcards.sample}/;
     {params.cellranger_software} count \
@@ -136,14 +169,37 @@ rule run_cellranger:
 # Write a compact JSON report containing config, samples, and available tool versions.
 rule pipeline_summary:
   input:
-    run_cellranger=cellranger_done_targets
+    run_cellranger=cellranger_done_targets,
+    tool_versions=rna_tool_version_targets
   output:
     report = global_report('pipeline_summary_RNA.json'),
     outfile = touch(global_done('pipeline_summary'))
   log:
     global_log('pipeline_summary')
+  benchmark:
+    global_benchmark('pipeline_summary')
   params:
     script = workflow.basedir + '/scripts/write_pipeline_summary.py',
+    config_file = workflow.basedir + '/../config/config_RNA.yaml'
+  shell:
+    '''
+    python3 {params.script} --config {params.config_file} --workflow RNA --output {output.report} --tool-version-files {input.tool_versions} > {log} 2>&1
+    '''
+
+# Write a JSON report with per-rule runtime and output-size/count metrics.
+rule rule_metrics_report:
+  input:
+    dependencies = rna_rule_metrics_dependencies,
+    pipeline_summary = global_done('pipeline_summary')
+  output:
+    report = global_report('rule_metrics_RNA.json'),
+    outfile = touch(global_done('rule_metrics_report'))
+  log:
+    global_log('rule_metrics_report')
+  benchmark:
+    global_benchmark('rule_metrics_report')
+  params:
+    script = workflow.basedir + '/scripts/write_rule_metrics_report.py',
     config_file = workflow.basedir + '/../config/config_RNA.yaml'
   shell:
     '''
