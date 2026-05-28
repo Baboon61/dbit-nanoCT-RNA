@@ -7,6 +7,6 @@ dependencies:
   - python=3.11
   - cookiecutter
   - snakemake
-  - python-htcondor
+  - python-htcondor<25
   - snakemake-executor-plugin-cluster-generic
   - pyyaml
