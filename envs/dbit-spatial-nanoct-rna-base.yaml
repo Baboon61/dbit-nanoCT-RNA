@@ -10,4 +10,3 @@ dependencies:
   - python-htcondor
   - snakemake-executor-plugin-cluster-generic
   - pyyaml
-  - test
