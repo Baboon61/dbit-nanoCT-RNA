@@ -390,7 +390,7 @@ def main(args):
 
     # Write the statistics file
     with open("{0}/{1}_{2}_statistics.yaml".format(exp.out_prefix,exp.name,exp.lane), 'w') as f:
-        yaml.dump(statistics, f)
+        yaml.safe_dump(dict(statistics), f, sort_keys=True)
 
     if count_selected_barcode_reads(statistics, exp.picked_barcodes) == 0:
         sys.exit("*** Error: no reads matched the selected barcode(s): {}\n".format(

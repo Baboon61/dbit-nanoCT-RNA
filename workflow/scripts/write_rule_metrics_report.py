@@ -8,8 +8,27 @@ from pathlib import Path
 
 try:
     import yaml
+    from yaml.nodes import MappingNode
 except ImportError:
     yaml = None
+    MappingNode = None
+
+if yaml is not None:
+    class MetricsYamlLoader(yaml.SafeLoader):
+        pass
+
+    def construct_defaultdict(loader, node):
+        if isinstance(node, MappingNode):
+            for key_node, value_node in node.value:
+                key = loader.construct_object(key_node)
+                if key == "dictitems":
+                    return dict(loader.construct_mapping(value_node, deep=True))
+        return {}
+
+    MetricsYamlLoader.add_constructor(
+        "tag:yaml.org,2002:python/object/apply:collections.defaultdict",
+        construct_defaultdict,
+    )
 
 
 def read_yaml_config(path):
@@ -68,7 +87,7 @@ def parse_yaml_file(path):
     except OSError:
         return {}
     if yaml is not None:
-        data = yaml.safe_load(text)
+        data = yaml.load(text, Loader=MetricsYamlLoader)
         return dict(data or {})
 
     data = {}
