@@ -131,9 +131,8 @@ def parse_benchmark(path):
 def parse_bbduk_stats(path):
     metrics = {}
 
-    def read_pair_count(value):
-        count = int(str(value).replace(",", ""))
-        return count // 2 if count % 2 == 0 else count / 2
+    def read_count(value):
+        return int(str(value).replace(",", ""))
 
     try:
         with open(path, "r") as handle:
@@ -146,25 +145,25 @@ def parse_bbduk_stats(path):
                     key = fields[0].lstrip("#").strip().lower().replace(" ", "_")
                     if key == "total" and len(fields) >= 2:
                         try:
-                            metrics["input_reads"] = read_pair_count(fields[1])
+                            metrics["input_reads"] = read_count(fields[1])
                         except ValueError:
                             metrics["input_reads"] = fields[1]
                     elif key == "matched" and len(fields) >= 2:
                         try:
-                            metrics["reads_kept"] = read_pair_count(fields[1])
+                            metrics["reads_kept"] = read_count(fields[1])
                         except ValueError:
                             metrics["reads_kept"] = fields[1]
                     continue
                 key = fields[0].strip().lower().replace(" ", "_")
                 if key == "total" and len(fields) >= 2:
                     try:
-                        metrics["input_reads"] = read_pair_count(fields[1])
+                        metrics["input_reads"] = read_count(fields[1])
                     except ValueError:
                         metrics["input_reads"] = fields[1]
                     continue
                 if key == "matched" and len(fields) >= 2:
                     try:
-                        metrics["reads_kept"] = read_pair_count(fields[1])
+                        metrics["reads_kept"] = read_count(fields[1])
                     except ValueError:
                         metrics["reads_kept"] = fields[1]
     except OSError:
@@ -192,6 +191,15 @@ def percent(numerator, denominator):
         return round((float(numerator) / float(denominator)) * 100, 2)
     except (TypeError, ValueError, ZeroDivisionError):
         return None
+
+
+def half_count(value):
+    try:
+        count = float(value)
+    except (TypeError, ValueError):
+        return value
+    halved = count / 2
+    return int(halved) if halved.is_integer() else halved
 
 
 def add_processed_written_percentages(metrics):
@@ -227,18 +235,21 @@ def add_read_flow_metrics(entries):
             input_reads = metrics.get("input_reads")
             reads_kept = metrics.get("reads_kept")
             if entry["rule"] == "filter_primer" and input_reads is not None:
-                raw_reads = input_reads
-                metrics["raw_reads_start"] = input_reads
+                raw_reads = half_count(input_reads)
+                input_reads = raw_reads
+                metrics["input_reads"] = input_reads
+                metrics["raw_reads_start"] = raw_reads
             if input_reads is None and previous_kept is not None:
                 input_reads = previous_kept
                 metrics["input_reads"] = input_reads
 
             if input_reads is not None and reads_kept is not None:
                 try:
-                    discarded = int(input_reads) - int(reads_kept)
+                    discarded = float(input_reads) - float(reads_kept)
                 except (TypeError, ValueError):
                     discarded = None
                 if discarded is not None:
+                    discarded = int(discarded) if discarded.is_integer() else discarded
                     metrics["reads_discarded"] = discarded
                     metrics["reads_kept_percent_vs_previous"] = percent(reads_kept, input_reads)
                     metrics["reads_discarded_percent_vs_previous"] = percent(discarded, input_reads)
