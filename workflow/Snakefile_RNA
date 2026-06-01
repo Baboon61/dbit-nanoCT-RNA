@@ -90,7 +90,7 @@ rule bc_process:
     spatial_barcode1_length = config['general']['spatial_barcode1_length'],
     spatial_barcode2_length = config['general']['spatial_barcode2_length'],
     umi_barcode_length = config['general']['umi_barcode_length']
-  conda: '../envs/dbit-spatial-nanoct-rna-bcprocess.yaml'
+  conda: '../envs/dbit-nanoct-rna-bcprocess.yaml'
   shell:
     '''
     python3 {input.script} \

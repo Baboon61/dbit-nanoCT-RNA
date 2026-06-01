@@ -130,6 +130,11 @@ def parse_benchmark(path):
 
 def parse_bbduk_stats(path):
     metrics = {}
+
+    def read_pair_count(value):
+        count = int(str(value).replace(",", ""))
+        return count // 2 if count % 2 == 0 else count / 2
+
     try:
         with open(path, "r") as handle:
             for line in handle:
@@ -141,34 +146,27 @@ def parse_bbduk_stats(path):
                     key = fields[0].lstrip("#").strip().lower().replace(" ", "_")
                     if key == "total" and len(fields) >= 2:
                         try:
-                            metrics["input_reads"] = int(str(fields[1]).replace(",", ""))
+                            metrics["input_reads"] = read_pair_count(fields[1])
                         except ValueError:
                             metrics["input_reads"] = fields[1]
                     elif key == "matched" and len(fields) >= 2:
                         try:
-                            metrics["reads_kept"] = int(str(fields[1]).replace(",", ""))
+                            metrics["reads_kept"] = read_pair_count(fields[1])
                         except ValueError:
                             metrics["reads_kept"] = fields[1]
                     continue
                 key = fields[0].strip().lower().replace(" ", "_")
                 if key == "total" and len(fields) >= 2:
                     try:
-                        metrics["input_reads"] = int(str(fields[1]).replace(",", ""))
+                        metrics["input_reads"] = read_pair_count(fields[1])
                     except ValueError:
                         metrics["input_reads"] = fields[1]
                     continue
                 if key == "matched" and len(fields) >= 2:
                     try:
-                        metrics["reads_kept"] = int(str(fields[1]).replace(",", ""))
+                        metrics["reads_kept"] = read_pair_count(fields[1])
                     except ValueError:
                         metrics["reads_kept"] = fields[1]
-                    continue
-                if len(fields) >= 3:
-                    try:
-                        metrics[key + "_reads"] = int(str(fields[1]).replace(",", ""))
-                    except ValueError:
-                        metrics[key + "_reads"] = fields[1]
-                    metrics[key + "_percent"] = fields[2]
     except OSError:
         pass
     return metrics

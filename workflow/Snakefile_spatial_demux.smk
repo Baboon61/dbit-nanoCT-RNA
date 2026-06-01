@@ -22,7 +22,7 @@ rule filter_primer:
     PCRprimer_sequence = config['general']['PCRprimer_sequence'],
     out_dir = proc_dir
   threads: config['general']['core']
-  conda: '../envs/dbit-spatial-nanoct-rna-bbduk.yaml'
+  conda: '../envs/dbit-nanoct-rna-bbduk.yaml'
   shell:
     '''
     {{
@@ -63,7 +63,7 @@ rule filter_L1:
     linker1_sequence = config['general']['linker1_sequence'],
     out_dir = proc_dir
   threads: config['general']['core']
-  conda: '../envs/dbit-spatial-nanoct-rna-bbduk.yaml'
+  conda: '../envs/dbit-nanoct-rna-bbduk.yaml'
   shell:
     '''
     {{
@@ -104,7 +104,7 @@ rule filter_L2:
     linker2_sequence = config['general']['linker2_sequence'],
     out_dir = proc_dir
   threads: config['general']['core']
-  conda: '../envs/dbit-spatial-nanoct-rna-bbduk.yaml'
+  conda: '../envs/dbit-nanoct-rna-bbduk.yaml'
   shell:
     '''
     {{

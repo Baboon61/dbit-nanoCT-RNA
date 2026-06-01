@@ -184,7 +184,7 @@ rule bc_process:
     spatial_barcode1_length = config['general']['spatial_barcode1_length'],
     spatial_barcode2_length = config['general']['spatial_barcode2_length'],
     nanoCutTag_barcode_length = config['general']['nanoCutTag_barcode_length']
-  conda: '../envs/dbit-spatial-nanoct-rna-bcprocess.yaml'
+  conda: '../envs/dbit-nanoct-rna-bcprocess.yaml'
   shell:
     '''
     python3 {input.script} \
@@ -251,7 +251,7 @@ rule debarcode:
     min_first_flush_ratio = config['general'].get('min_first_flush_ratio', 0.00001),
     debarcode_threads = config['general'].get('debarcode_threads', 1),
     chunk_size = config['general'].get('debarcode_chunk_size', 10000)
-  conda: '../envs/dbit-spatial-nanoct-rna-debarcode.yaml'
+  conda: '../envs/dbit-nanoct-rna-debarcode.yaml'
   shell:
     '''
     {{
@@ -357,7 +357,7 @@ rule bam_to_namesorted:
     threads: config['general'].get('samtools_threads', 20)
     resources:
         mem_mb = config['general'].get('samtools_mem_mb', 32000)
-    conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
+    conda: '../envs/dbit-nanoct-rna-samtools.yaml'
     shell:
         '''
         {{
@@ -382,7 +382,7 @@ rule remove_LA_duplicates:
     params:
         script = workflow.basedir + '/scripts/remove_LA_duplicates.py',
         check_outputs = workflow.basedir + '/scripts/check_outputs.py',
-    conda: '../envs/dbit-spatial-nanoct-rna-debarcode.yaml'
+    conda: '../envs/dbit-nanoct-rna-debarcode.yaml'
     resources:
         mem_mb = config['general'].get('remove_LA_duplicates_mem_mb', 32000)
     shell:
@@ -406,7 +406,7 @@ rule possort_noLA_bam_file:
         modality_log('{sample}', '{modality}', '{barcode}', 'possort_noLA_bam')
     benchmark:
         modality_benchmark('{sample}', '{modality}', '{barcode}', 'possort_noLA_bam')
-    conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
+    conda: '../envs/dbit-nanoct-rna-samtools.yaml'
     threads: config['general'].get('samtools_threads', 20)
     resources:
         mem_mb = config['general'].get('samtools_mem_mb', 32000)
@@ -436,7 +436,7 @@ rule bam_noLA_to_fragments_noLA:
         modality_log('{sample}', '{modality}', '{barcode}', 'noLA_fragments')
     benchmark:
         modality_benchmark('{sample}', '{modality}', '{barcode}', 'noLA_fragments')
-    conda: '../envs/dbit-spatial-nanoct-rna-sinto.yaml'
+    conda: '../envs/dbit-nanoct-rna-sinto.yaml'
     threads: config['general'].get('sinto_threads', 20)
     resources:
         mem_mb=config['general'].get('sinto_mem_mb', 16000)
@@ -465,7 +465,7 @@ rule sort_sinto_output:
         modality_log('{sample}', '{modality}', '{barcode}', 'sort_noLA_fragments')
     benchmark:
         modality_benchmark('{sample}', '{modality}', '{barcode}', 'sort_noLA_fragments')
-    conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
+    conda: '../envs/dbit-nanoct-rna-samtools.yaml'
     resources:
         mem_mb = config['general'].get('samtools_mem_mb', 16000)
     params:
@@ -495,7 +495,7 @@ rule bam_to_bw:
     benchmark:
         modality_benchmark('{sample}', '{modality}', '{barcode}', 'bam_to_bw')
     threads: config['general'].get('bamcoverage_threads', 20)
-    conda: '../envs/dbit-spatial-nanoct-rna-bamcoverage.yaml'
+    conda: '../envs/dbit-nanoct-rna-bamcoverage.yaml'
     resources:
         mem_mb = config['general'].get('bamcoverage_mem_mb', 16000)
     params:
@@ -529,7 +529,7 @@ rule run_macs_broad:
         macs_genome=config['general']['macs_genome'],
         check_outputs = workflow.basedir + '/scripts/check_outputs.py',
         write_tool_version = workflow.basedir + '/scripts/write_tool_version.py'
-    conda: '../envs/dbit-spatial-nanoct-rna-macs.yaml'
+    conda: '../envs/dbit-nanoct-rna-macs.yaml'
     resources:
         mem_mb = config['general'].get('macs_mem_mb', 16000)
     shell:
@@ -560,7 +560,7 @@ rule barcode_metrics_peaks:
     params:
         get_cell_barcode=workflow.basedir + '/scripts/awk/get_cell_barcode.awk',
         tmpdir=config['general']['tempdir']
-    conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
+    conda: '../envs/dbit-nanoct-rna-samtools.yaml'
     resources:
         mem_mb = config['general'].get('samtools_mem_mb', 16000)
     shell:
@@ -588,7 +588,7 @@ rule barcode_metrics_all:
     params:
         get_cell_barcode=workflow.basedir + '/scripts/awk/get_cell_barcode.awk',
         tmpdir=config['general']['tempdir']
-    conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
+    conda: '../envs/dbit-nanoct-rna-samtools.yaml'
     resources:
         mem_mb = config['general'].get('samtools_mem_mb', 16000)
     shell:
@@ -657,7 +657,7 @@ rule create_matrix_peaks:
         modality_log('{sample}', '{modality}', '{barcode}', 'matrix_peaks')
     benchmark:
         modality_benchmark('{sample}', '{modality}', '{barcode}', 'matrix_peaks')
-    conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
+    conda: '../envs/dbit-nanoct-rna-samtools.yaml'
     params:
         matrix_dir = ct_matrix_base('{sample}', '{modality}', '{barcode}'),
         matrix_final = ct_matrix_base('{sample}', '{modality}', '{barcode}') + '/matrix_peaks',
@@ -696,7 +696,7 @@ rule create_matrix_bins:
         modality_log('{sample}', '{modality}', '{barcode}', 'matrix_bin_{bins}')
     benchmark:
         modality_benchmark('{sample}', '{modality}', '{barcode}', 'matrix_bin_{bins}')
-    conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
+    conda: '../envs/dbit-nanoct-rna-samtools.yaml'
     params:
         get_chrom_sizes = workflow.basedir + '/scripts/awk/get_chrom_sizes.awk',
         matrix_dir = ct_matrix_base('{sample}', '{modality}', '{barcode}'),
@@ -740,7 +740,7 @@ rule create_genebody_and_promoter_matrix:
         modality_log('{sample}', '{modality}', '{barcode}', 'matrix_genes')
     benchmark:
         modality_benchmark('{sample}', '{modality}', '{barcode}', 'matrix_genes')
-    conda: '../envs/dbit-spatial-nanoct-rna-samtools.yaml'
+    conda: '../envs/dbit-nanoct-rna-samtools.yaml'
     params:
         script = workflow.basedir + '/scripts/filter_cellranger_gtf_file.py',
         matrix_dir = ct_matrix_base('{sample}', '{modality}', '{barcode}'),

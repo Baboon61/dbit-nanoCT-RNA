@@ -1,4 +1,4 @@
-name: dbit-spatial-nanoct-rna-debarcode
+name: dbit-nanoct-rna-debarcode
 channels:
   - conda-forge
   - bioconda

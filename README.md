@@ -228,8 +228,8 @@ Because this modifies a file inside the Cell Ranger installation, `general.cellr
 Use Conda or Mamba. The base environment contains Snakemake:
 
 ```bash
-mamba env create -f envs/dbit-spatial-nanoct-rna-base.yaml
-conda activate dbit-spatial-nanoct-rna-base
+mamba env create -f envs/dbit-nanoct-rna-base.yaml
+conda activate dbit-nanoct-rna-base
 ```
 
 Snakemake creates the rule-specific environments from `envs/*.yaml` when run with `--use-conda`.

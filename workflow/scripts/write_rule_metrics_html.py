@@ -50,6 +50,15 @@ RUNTIME_KEYS = ["h:m:s"]
 CONTEXT_ORDER = ["sample", "modality", "barcode", "number", "lane", "suffix", "ext", "matrix"]
 GOOD_KEYWORDS = ("kept", "matched", "passed", "written", "cell_barcodes", "fragments", "peaks")
 BAD_KEYWORDS = ("discarded", "failed", "duplicates")
+FILTER_RULES = {"filter_primer", "filter_L1", "filter_L2"}
+FILTER_HIDDEN_METRICS = {
+    "1_percent",
+    "1_reads",
+    "input_reads",
+    "raw_reads_start",
+    "reads_discarded",
+    "reads_discarded_percent_vs_previous",
+}
 
 
 def escape(value):
@@ -141,8 +150,36 @@ def metric_status(key, value):
     return None
 
 
-def render_metric_value(key, value):
+def retention_color(value):
+    value_number = numeric_value(value)
+    if value_number is None:
+        return None
+    red = (249, 216, 214)
+    yellow = (255, 241, 199)
+    green = (220, 239, 235)
+    if value_number < 70:
+        color = red
+    elif value_number > 95:
+        color = green
+    elif value_number <= 82.5:
+        ratio = (value_number - 70) / 12.5
+        color = tuple(round(red[index] + (yellow[index] - red[index]) * ratio) for index in range(3))
+    else:
+        ratio = (value_number - 82.5) / 12.5
+        color = tuple(round(yellow[index] + (green[index] - yellow[index]) * ratio) for index in range(3))
+    return "#{:02x}{:02x}{:02x}".format(*color)
+
+
+def render_metric_value(key, value, values=None):
     formatted = format_metric(key, value)
+    if key == "reads_kept_percent_vs_previous":
+        color = retention_color(value)
+        if color:
+            return f'<span class="metric-tag" style="background-color: {color}; color: #18202a;">{formatted}</span>'
+    if key in {"reads_kept_percent_vs_raw", "reads_kept"} and values:
+        color = retention_color(values.get("reads_kept_percent_vs_previous"))
+        if color:
+            return f'<span class="metric-tag" style="background-color: {color}; color: #18202a;">{formatted}</span>'
     status = metric_status(key, value)
     if not status:
         return formatted
@@ -243,15 +280,17 @@ def merge_entries(entries):
     return sorted(merged, key=lambda item: (item["rule"], context_key(item["context"])))
 
 
-def render_key_values(values, class_name="kv"):
-    if not values:
+def render_key_values(values, class_name="kv", hidden_keys=None):
+    hidden_keys = hidden_keys or set()
+    visible_keys = [key for key in sorted(values) if key not in hidden_keys]
+    if not visible_keys:
         return '<span class="muted">none</span>'
     rows = []
-    for key in sorted(values):
+    for key in visible_keys:
         rows.append(
             "<tr>"
             f"<th>{human_label(key)}</th>"
-            f"<td>{render_metric_value(key, values[key])}</td>"
+            f"<td>{render_metric_value(key, values[key], values)}</td>"
             "</tr>"
         )
     return f'<table class="{class_name}"><tbody>' + "".join(rows) + "</tbody></table>"
@@ -267,7 +306,8 @@ def render_outputs(outputs):
 def render_entry(entry):
     target = entry.get("target_label") or entry.get("rule")
     context = entry_context_label(entry)
-    metrics = render_key_values(entry.get("metrics") or {})
+    hidden_metrics = FILTER_HIDDEN_METRICS if entry.get("rule") in FILTER_RULES else set()
+    metrics = render_key_values(entry.get("metrics") or {}, hidden_keys=hidden_metrics)
     runtime = render_key_values(entry.get("runtime") or {})
     outputs = render_outputs(entry.get("outputs") or [])
     return f"""
@@ -299,6 +339,24 @@ def rule_sort_key(rule, order_index):
     return (order_index.get(normalized, len(order_index)), normalized)
 
 
+def total_raw_reads(entries):
+    total = 0
+    found = False
+    for entry in entries:
+        if entry.get("rule") != "filter_primer":
+            continue
+        metrics = entry.get("metrics") or {}
+        value = metrics.get("raw_reads_start", metrics.get("input_reads"))
+        if value is None:
+            continue
+        try:
+            total += int(value)
+            found = True
+        except (TypeError, ValueError):
+            continue
+    return total if found else None
+
+
 def build_html(report, rule_order):
     entries = merge_entries(report.get("rules") or [])
     order_index = {rule: index for index, rule in enumerate(rule_order)}
@@ -306,8 +364,8 @@ def build_html(report, rule_order):
     for entry in entries:
         groups[entry.get("rule", "unknown")].append(entry)
 
-    total_outputs = sum(len(entry.get("outputs") or []) for entry in entries)
-    metric_entries = sum(1 for entry in entries if entry.get("metrics"))
+    raw_reads = total_raw_reads(entries)
+    raw_reads_label = f"{raw_reads:,}" if raw_reads is not None else "n/a"
     workflow = report.get("workflow", "workflow")
 
     sections = []
@@ -543,9 +601,7 @@ def build_html(report, rule_order):
   <main>
     <section class="summary">
       <div class="stat"><b>{len(entries):,}</b><span>rule entries</span></div>
-      <div class="stat"><b>{len(groups):,}</b><span>rules represented</span></div>
-      <div class="stat"><b>{metric_entries:,}</b><span>entries with metrics</span></div>
-      <div class="stat"><b>{total_outputs:,}</b><span>tracked outputs</span></div>
+      <div class="stat"><b>{raw_reads_label}</b><span>raw reads at start</span></div>
     </section>
     {''.join(sections)}
   </main>

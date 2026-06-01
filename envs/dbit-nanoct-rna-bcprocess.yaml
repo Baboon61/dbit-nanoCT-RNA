@@ -1,10 +1,9 @@
-name: dbit-spatial-nanoct-rna-sinto
+name: dbit-nanoct-rna-bcprocess
 channels:
   - conda-forge
   - bioconda
   - defaults
 dependencies:
   - python=3.11
-  - sinto
-  - setuptools<82
+  - biopython
 

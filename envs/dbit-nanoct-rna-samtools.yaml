@@ -1,4 +1,4 @@
-name: dbit-spatial-nanoct-rna-samtools
+name: dbit-nanoct-rna-samtools
 channels:
   - conda-forge
   - bioconda

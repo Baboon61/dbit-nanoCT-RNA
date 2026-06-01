@@ -1,9 +1,9 @@
-name: dbit-spatial-nanoct-rna-bcprocess
+name: dbit-nanoct-rna-macs
 channels:
   - conda-forge
   - bioconda
   - defaults
 dependencies:
   - python=3.11
-  - biopython
+  - macs2
 
