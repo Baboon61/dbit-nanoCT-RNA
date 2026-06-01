@@ -239,7 +239,7 @@ def add_read_flow_metrics(entries):
                 input_reads = raw_reads
                 metrics["input_reads"] = input_reads
                 metrics["raw_reads_start"] = raw_reads
-            if input_reads is None and previous_kept is not None:
+            elif previous_kept is not None:
                 input_reads = previous_kept
                 metrics["input_reads"] = input_reads
 
