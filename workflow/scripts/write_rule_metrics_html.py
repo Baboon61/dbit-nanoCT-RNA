@@ -268,6 +268,23 @@ def entry_context_label(entry):
     return "; ".join(parts) or "global"
 
 
+def render_context_tags(entry):
+    context = clean_context(entry)
+    if not context:
+        return '<span class="muted">global</span>'
+    keys = [key for key in CONTEXT_ORDER if key in context]
+    keys.extend(key for key in sorted(set(context) - set(CONTEXT_ORDER)))
+    tags = []
+    for key in keys:
+        tags.append(
+            '<span class="context-tag">'
+            f'<span>{human_label(key)}</span>'
+            f'<b>{escape(context[key])}</b>'
+            '</span>'
+        )
+    return '<div class="context-tags">' + "".join(tags) + "</div>"
+
+
 def context_key(context):
     return tuple((key, context[key]) for key in CONTEXT_ORDER if key in context) + tuple(
         (key, context[key]) for key in sorted(set(context) - set(CONTEXT_ORDER))
@@ -343,16 +360,27 @@ def render_key_values(values, class_name="kv", hidden_keys=None, last_keys=None)
     return f'<table class="{class_name}"><tbody>' + "".join(rows) + "</tbody></table>"
 
 
-def render_outputs(outputs):
+def relative_output_path(path, processed_dir):
+    if not processed_dir or not os.path.isabs(str(path)):
+        return path
+    try:
+        return os.path.relpath(path, processed_dir)
+    except ValueError:
+        return path
+
+
+def render_outputs(outputs, processed_dir=None):
     if not outputs:
         return '<span class="muted">none</span>'
-    items = "".join(f"<li>{escape(path)}</li>" for path in outputs)
+    items = "".join(f"<li>{escape(relative_output_path(path, processed_dir))}</li>" for path in outputs)
     return f"<ul>{items}</ul>"
 
 
-def render_entry(entry):
+def render_entry(entry, processed_dir=None):
     target = entry.get("target_label") or entry.get("rule")
-    context = entry_context_label(entry)
+    context = render_context_tags(entry)
+    runtime = entry.get("runtime") or {}
+    runtime_tag = f'<span class="time-tag">{escape(runtime["h:m:s"])}</span>' if runtime.get("h:m:s") else ""
     hidden_metrics = FILTER_HIDDEN_METRICS if entry.get("rule") in FILTER_RULES else set()
     if entry.get("rule") == "bc_process":
         hidden_metrics = BC_PROCESS_HIDDEN_METRICS
@@ -360,22 +388,20 @@ def render_entry(entry):
         hidden_metrics = DEBARCODE_HIDDEN_METRICS
     last_metrics = {"no_match"} if entry.get("rule") == "debarcode" else set()
     metrics = render_key_values(entry.get("metrics") or {}, hidden_keys=hidden_metrics, last_keys=last_metrics)
-    runtime = render_key_values(entry.get("runtime") or {})
-    outputs = render_outputs(entry.get("outputs") or [])
+    outputs = render_outputs(entry.get("outputs") or [], processed_dir=processed_dir)
     return f"""
       <article class="entry">
         <div class="entry-head">
-          <h3>{escape(target)}</h3>
-          <p>{escape(context)}</p>
+          <div class="entry-title">
+            <h3>{escape(target)}</h3>
+            {runtime_tag}
+          </div>
+          {context}
         </div>
         <div class="entry-grid">
           <section>
             <h4>Metrics</h4>
             {metrics}
-          </section>
-          <section>
-            <h4>Runtime</h4>
-            {runtime}
           </section>
           <section class="outputs">
             <h4>Outputs</h4>
@@ -419,6 +445,7 @@ def build_html(report, rule_order):
     raw_reads = total_raw_reads(entries)
     raw_reads_label = f"{raw_reads:,}" if raw_reads is not None else "n/a"
     workflow = report.get("workflow", "workflow")
+    processed_dir = report.get("processedData_dir", "")
 
     sections = []
     for rule in sorted(groups, key=lambda item: rule_sort_key(item, order_index)):
@@ -430,7 +457,7 @@ def build_html(report, rule_order):
                 <h2>{human_label(rule)}</h2>
                 <span>{len(rule_entries):,} entr{"y" if len(rule_entries) == 1 else "ies"}</span>
               </div>
-              {''.join(render_entry(entry) for entry in rule_entries)}
+              {''.join(render_entry(entry, processed_dir=processed_dir) for entry in rule_entries)}
             </section>
             """
         )
@@ -543,19 +570,55 @@ def build_html(report, rule_order):
       border-bottom: 1px solid var(--line);
       background: #fbfcfd;
     }}
+    .entry-title {{
+      align-items: center;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }}
     .entry-head h3 {{
       font-size: 1rem;
       font-weight: 650;
     }}
-    .entry-head p {{
-      color: var(--muted);
+    .time-tag, .context-tag {{
+      border-radius: 999px;
+      display: inline-flex;
+      line-height: 1.2;
+      white-space: nowrap;
+    }}
+    .time-tag {{
+      background: #e8edf3;
+      color: #354052;
+      font-size: 0.82rem;
+      font-variant-numeric: tabular-nums;
+      font-weight: 650;
+      padding: 3px 9px;
+    }}
+    .context-tags {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      justify-content: flex-end;
+    }}
+    .context-tag {{
+      background: #eef7f6;
+      border: 1px solid #c7e0dc;
+      color: #184e48;
       font-size: 0.9rem;
-      text-align: right;
-      overflow-wrap: anywhere;
+      overflow: hidden;
+    }}
+    .context-tag span {{
+      background: #dcefeb;
+      color: #42645f;
+      padding: 3px 7px;
+    }}
+    .context-tag b {{
+      font-weight: 650;
+      padding: 3px 8px;
     }}
     .entry-grid {{
       display: grid;
-      grid-template-columns: minmax(220px, 1.2fr) minmax(180px, 0.8fr) minmax(260px, 1fr);
+      grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr);
       gap: 0;
     }}
     .entry-grid section {{
@@ -628,9 +691,9 @@ def build_html(report, rule_order):
       .entry-head {{
         display: block;
       }}
-      .entry-head p {{
-        text-align: left;
-        margin-top: 4px;
+      .context-tags {{
+        justify-content: flex-start;
+        margin-top: 8px;
       }}
       .entry-grid {{
         grid-template-columns: 1fr;
@@ -648,7 +711,7 @@ def build_html(report, rule_order):
 <body>
   <header>
     <h1>{escape(workflow)} rule metrics</h1>
-    <p class="subtitle">Rule metrics from {escape(report.get("processedData_dir", ""))}, grouped and ordered by the workflow rule sequence.</p>
+    <p class="subtitle">Metrics from : {escape(processed_dir)}</p>
   </header>
   <main>
     <section class="summary">
