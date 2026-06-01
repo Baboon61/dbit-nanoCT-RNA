@@ -257,6 +257,26 @@ def add_metric_totals(total, metrics):
             total[key] = value
 
 
+def adjust_debarcode_no_match(groups):
+    selected_by_sample = {}
+    for group in groups.values():
+        sample = group["context"].get("sample")
+        try:
+            selected_by_sample[sample] = selected_by_sample.get(sample, 0) + int(group["metrics"].get("reads_selected", 0))
+        except (TypeError, ValueError):
+            pass
+
+    for group in groups.values():
+        sample = group["context"].get("sample")
+        try:
+            own_selected = int(group["metrics"].get("reads_selected", 0))
+            no_match = int(group["metrics"].get("no_match", 0))
+        except (TypeError, ValueError):
+            continue
+        other_selected = selected_by_sample.get(sample, 0) - own_selected
+        group["metrics"]["no_match"] = max(0, no_match - other_selected)
+
+
 def add_read_flow_metrics(entries):
     order = {"filter_primer": 0, "filter_L1": 1, "filter_L2": 2}
     chains = {}
@@ -516,6 +536,8 @@ def collect_ct_output_metrics(processed_dir, workflow):
         group = debarcode_groups.setdefault(key, {"context": context, "metrics": {}, "outputs": []})
         add_metric_totals(group["metrics"], debarcode_metrics(stats, context.get("barcode"), None))
         group["outputs"].append(str(path))
+
+    adjust_debarcode_no_match(debarcode_groups)
 
     for group in debarcode_groups.values():
         sample = group["context"].get("sample")

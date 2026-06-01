@@ -181,6 +181,32 @@ def retention_color(value):
     return "#{:02x}{:02x}{:02x}".format(*color)
 
 
+def debarcode_selection_color(value):
+    value_number = numeric_value(value)
+    if value_number is None:
+        return None
+    red = (249, 216, 214)
+    yellow = (255, 241, 199)
+    green = (220, 239, 235)
+    def blend(start, end, ratio):
+        return tuple(round(start[index] + (end[index] - start[index]) * ratio) for index in range(3))
+    if 45 <= value_number <= 55:
+        color = green
+    elif value_number < 35 or value_number > 65:
+        color = red
+    elif value_number < 45:
+        if value_number <= 40:
+            color = blend(red, yellow, (value_number - 35) / 5)
+        else:
+            color = blend(yellow, green, (value_number - 40) / 5)
+    else:
+        if value_number <= 60:
+            color = blend(green, yellow, (value_number - 55) / 5)
+        else:
+            color = blend(yellow, red, (value_number - 60) / 5)
+    return "#{:02x}{:02x}{:02x}".format(*color)
+
+
 def render_metric_value(key, value, values=None):
     formatted = format_metric(key, value)
     if key == "reads_kept_percent_vs_previous":
@@ -188,7 +214,7 @@ def render_metric_value(key, value, values=None):
         if color:
             return f'<span class="metric-tag" style="background-color: {color}; color: #18202a;">{formatted}</span>'
     if key == "reads_selected_percent_vs_bc_process":
-        color = retention_color(value)
+        color = debarcode_selection_color(value)
         if color:
             return f'<span class="metric-tag" style="background-color: {color}; color: #18202a;">{formatted}</span>'
     if key in {"reads_kept_percent_vs_raw", "reads_kept", "reads_written"} and values:
@@ -196,7 +222,7 @@ def render_metric_value(key, value, values=None):
         if color:
             return f'<span class="metric-tag" style="background-color: {color}; color: #18202a;">{formatted}</span>'
     if key == "reads_selected" and values:
-        color = retention_color(values.get("reads_selected_percent_vs_bc_process"))
+        color = debarcode_selection_color(values.get("reads_selected_percent_vs_bc_process"))
         if color:
             return f'<span class="metric-tag" style="background-color: {color}; color: #18202a;">{formatted}</span>'
     status = metric_status(key, value)
@@ -299,9 +325,11 @@ def merge_entries(entries):
     return sorted(merged, key=lambda item: (item["rule"], context_key(item["context"])))
 
 
-def render_key_values(values, class_name="kv", hidden_keys=None):
+def render_key_values(values, class_name="kv", hidden_keys=None, last_keys=None):
     hidden_keys = hidden_keys or set()
-    visible_keys = [key for key in sorted(values) if key not in hidden_keys]
+    last_keys = last_keys or set()
+    visible_keys = [key for key in sorted(values) if key not in hidden_keys and key not in last_keys]
+    visible_keys.extend(key for key in sorted(last_keys) if key in values and key not in hidden_keys)
     if not visible_keys:
         return '<span class="muted">none</span>'
     rows = []
@@ -330,7 +358,8 @@ def render_entry(entry):
         hidden_metrics = BC_PROCESS_HIDDEN_METRICS
     if entry.get("rule") == "debarcode":
         hidden_metrics = DEBARCODE_HIDDEN_METRICS
-    metrics = render_key_values(entry.get("metrics") or {}, hidden_keys=hidden_metrics)
+    last_metrics = {"no_match"} if entry.get("rule") == "debarcode" else set()
+    metrics = render_key_values(entry.get("metrics") or {}, hidden_keys=hidden_metrics, last_keys=last_metrics)
     runtime = render_key_values(entry.get("runtime") or {})
     outputs = render_outputs(entry.get("outputs") or [])
     return f"""
