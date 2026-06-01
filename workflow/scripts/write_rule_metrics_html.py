@@ -45,6 +45,13 @@ RULE_ALIASES = {
 }
 
 
+HIDDEN_CONTEXT_KEYS = {"benchmark_file", "scope"}
+RUNTIME_KEYS = ["h:m:s"]
+CONTEXT_ORDER = ["sample", "modality", "barcode", "number", "lane", "suffix", "ext", "matrix"]
+GOOD_KEYWORDS = ("kept", "matched", "passed", "written", "cell_barcodes", "fragments", "peaks")
+BAD_KEYWORDS = ("discarded", "failed", "duplicates")
+
+
 def escape(value):
     return html.escape("" if value is None else str(value))
 
@@ -84,10 +91,62 @@ def format_bytes(value):
     return format_value(value)
 
 
+def numeric_value(value):
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value.strip().rstrip("%"))
+        except ValueError:
+            return None
+    return None
+
+
 def format_metric(key, value):
     if key.endswith("_bytes") or key == "bytes":
         return format_bytes(value)
+    if "percent" in key.lower() or key.lower().endswith("pct"):
+        value_number = numeric_value(value)
+        if value_number is not None:
+            return f"{value_number:,.2f}%"
     return format_value(value)
+
+
+def metric_status(key, value):
+    key_lower = key.lower()
+    value_number = numeric_value(value)
+
+    if key_lower == "raw_reads_start" or key_lower == "input_reads":
+        return None
+    if "percent" in key_lower or key_lower.endswith("pct"):
+        if value_number is None:
+            return None
+        if any(word in key_lower for word in BAD_KEYWORDS):
+            if value_number <= 20:
+                return "good"
+            if value_number <= 50:
+                return "warn"
+            return "bad"
+        if any(word in key_lower for word in GOOD_KEYWORDS):
+            if value_number >= 80:
+                return "good"
+            if value_number >= 50:
+                return "warn"
+            return "bad"
+        return None
+    if any(word in key_lower for word in BAD_KEYWORDS):
+        return "bad"
+    if any(word in key_lower for word in GOOD_KEYWORDS):
+        return "good"
+    return None
+
+
+def render_metric_value(key, value):
+    formatted = format_metric(key, value)
+    status = metric_status(key, value)
+    if not status:
+        return formatted
+    return f'<span class="metric-tag {status}">{formatted}</span>'
 
 
 def normalize_rule(rule):
@@ -96,16 +155,92 @@ def normalize_rule(rule):
     return RULE_ALIASES.get(rule, rule)
 
 
+def clean_context(entry):
+    rule = normalize_rule(entry.get("rule", "unknown"))
+    context = {
+        key: value
+        for key, value in (entry.get("context") or {}).items()
+        if key not in HIDDEN_CONTEXT_KEYS
+    }
+
+    benchmark_file = (entry.get("context") or {}).get("benchmark_file", "")
+    benchmark_name = os.path.splitext(os.path.basename(benchmark_file))[0]
+    if rule == "create_matrix_bins" and benchmark_name.startswith("matrix_bin"):
+        context.setdefault("matrix", benchmark_name)
+    elif rule == "create_matrix_peaks" and benchmark_name == "matrix_peaks":
+        context.setdefault("matrix", "matrix_peaks")
+    elif rule == "create_genebody_and_promoter_matrix" and benchmark_name == "matrix_genes":
+        context.setdefault("matrix", "matrix_genes")
+
+    return context
+
+
 def entry_context_label(entry):
-    context = entry.get("context") or {}
-    ordered_keys = ["sample", "modality", "barcode", "number", "lane", "suffix", "ext", "matrix"]
+    context = clean_context(entry)
     parts = []
-    for key in ordered_keys:
+    for key in CONTEXT_ORDER:
         if key in context:
             parts.append(f"{key}: {context[key]}")
-    for key in sorted(set(context) - set(ordered_keys)):
+    for key in sorted(set(context) - set(CONTEXT_ORDER)):
         parts.append(f"{key}: {context[key]}")
     return "; ".join(parts) or "global"
+
+
+def context_key(context):
+    return tuple((key, context[key]) for key in CONTEXT_ORDER if key in context) + tuple(
+        (key, context[key]) for key in sorted(set(context) - set(CONTEXT_ORDER))
+    )
+
+
+def contexts_match(left, right):
+    common_keys = set(left) & set(right)
+    if not common_keys:
+        return not left and not right
+    return all(left[key] == right[key] for key in common_keys)
+
+
+def merge_outputs(left, right):
+    merged = list(left or [])
+    seen = set(merged)
+    for item in right or []:
+        if item not in seen:
+            merged.append(item)
+            seen.add(item)
+    return merged
+
+
+def sanitize_runtime(runtime):
+    return {key: runtime[key] for key in RUNTIME_KEYS if key in (runtime or {})}
+
+
+def merge_entries(entries):
+    merged = []
+    for entry in entries:
+        normalized = {
+            "rule": normalize_rule(entry.get("rule", "unknown")),
+            "target_label": entry.get("target_label") or normalize_rule(entry.get("rule", "unknown")),
+            "context": clean_context(entry),
+            "runtime": sanitize_runtime(entry.get("runtime") or {}),
+            "metrics": dict(entry.get("metrics") or {}),
+            "outputs": list(entry.get("outputs") or []),
+        }
+
+        match = None
+        for candidate in merged:
+            if candidate["rule"] == normalized["rule"] and contexts_match(candidate["context"], normalized["context"]):
+                match = candidate
+                break
+
+        if match is None:
+            merged.append(normalized)
+            continue
+
+        match["context"].update(normalized["context"])
+        match["metrics"].update(normalized["metrics"])
+        match["runtime"].update(normalized["runtime"])
+        match["outputs"] = merge_outputs(match["outputs"], normalized["outputs"])
+
+    return sorted(merged, key=lambda item: (item["rule"], context_key(item["context"])))
 
 
 def render_key_values(values, class_name="kv"):
@@ -116,7 +251,7 @@ def render_key_values(values, class_name="kv"):
         rows.append(
             "<tr>"
             f"<th>{human_label(key)}</th>"
-            f"<td>{format_metric(key, values[key])}</td>"
+            f"<td>{render_metric_value(key, values[key])}</td>"
             "</tr>"
         )
     return f'<table class="{class_name}"><tbody>' + "".join(rows) + "</tbody></table>"
@@ -165,11 +300,11 @@ def rule_sort_key(rule, order_index):
 
 
 def build_html(report, rule_order):
-    entries = report.get("rules") or []
+    entries = merge_entries(report.get("rules") or [])
     order_index = {rule: index for index, rule in enumerate(rule_order)}
     groups = defaultdict(list)
     for entry in entries:
-        groups[normalize_rule(entry.get("rule", "unknown"))].append(entry)
+        groups[entry.get("rule", "unknown")].append(entry)
 
     total_outputs = sum(len(entry.get("outputs") or []) for entry in entries)
     metric_entries = sum(1 for entry in entries if entry.get("metrics"))
@@ -355,6 +490,25 @@ def build_html(report, rule_order):
       color: var(--muted);
       font-size: 0.86rem;
       overflow-wrap: anywhere;
+    }}
+    .metric-tag {{
+      display: inline-block;
+      border-radius: 999px;
+      font-weight: 650;
+      line-height: 1.2;
+      padding: 2px 8px;
+    }}
+    .metric-tag.good {{
+      background: #dcefeb;
+      color: #0d5f55;
+    }}
+    .metric-tag.warn {{
+      background: #fff1c7;
+      color: #7a4e00;
+    }}
+    .metric-tag.bad {{
+      background: #f9d8d6;
+      color: #9b2c24;
     }}
     .muted {{
       color: var(--muted);

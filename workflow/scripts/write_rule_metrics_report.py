@@ -134,18 +134,121 @@ def parse_bbduk_stats(path):
         with open(path, "r") as handle:
             for line in handle:
                 line = line.strip()
-                if not line or line.startswith("#"):
+                if not line:
                     continue
                 fields = re.split(r"\t+", line)
-                if len(fields) >= 2:
-                    key = fields[0].strip().lower().replace(" ", "_")
+                if line.startswith("#"):
+                    key = fields[0].lstrip("#").strip().lower().replace(" ", "_")
+                    if key == "total" and len(fields) >= 2:
+                        try:
+                            metrics["input_reads"] = int(str(fields[1]).replace(",", ""))
+                        except ValueError:
+                            metrics["input_reads"] = fields[1]
+                    elif key == "matched" and len(fields) >= 2:
+                        try:
+                            metrics["reads_kept"] = int(str(fields[1]).replace(",", ""))
+                        except ValueError:
+                            metrics["reads_kept"] = fields[1]
+                    continue
+                key = fields[0].strip().lower().replace(" ", "_")
+                if key == "total" and len(fields) >= 2:
                     try:
-                        metrics[key] = int(fields[1])
+                        metrics["input_reads"] = int(str(fields[1]).replace(",", ""))
                     except ValueError:
-                        metrics[key] = fields[1]
+                        metrics["input_reads"] = fields[1]
+                    continue
+                if key == "matched" and len(fields) >= 2:
+                    try:
+                        metrics["reads_kept"] = int(str(fields[1]).replace(",", ""))
+                    except ValueError:
+                        metrics["reads_kept"] = fields[1]
+                    continue
+                if len(fields) >= 3:
+                    try:
+                        metrics[key + "_reads"] = int(str(fields[1]).replace(",", ""))
+                    except ValueError:
+                        metrics[key + "_reads"] = fields[1]
+                    metrics[key + "_percent"] = fields[2]
     except OSError:
         pass
     return metrics
+
+
+def filter_step_from_stats_path(path):
+    step_match = re.search(r"_stats\.(.+)\.txt$", path.name)
+    return step_match.group(1) if step_match else "unknown"
+
+
+def lane_from_stats_path(path, sample):
+    prefix = path.name.split("_stats.", 1)[0]
+    sample_prefix = sample + "_"
+    if prefix.startswith(sample_prefix):
+        return prefix[len(sample_prefix):]
+    return None
+
+
+def percent(numerator, denominator):
+    if denominator in (None, 0):
+        return None
+    try:
+        return round((float(numerator) / float(denominator)) * 100, 2)
+    except (TypeError, ValueError, ZeroDivisionError):
+        return None
+
+
+def add_processed_written_percentages(metrics):
+    reads_processed = metrics.get("reads_processed")
+    reads_written = metrics.get("reads_written")
+    if reads_processed is None or reads_written is None:
+        return metrics
+    try:
+        discarded = int(reads_processed) - int(reads_written)
+    except (TypeError, ValueError):
+        return metrics
+    metrics["reads_discarded"] = discarded
+    metrics["reads_kept_percent_vs_previous"] = percent(reads_written, reads_processed)
+    metrics["reads_discarded_percent_vs_previous"] = percent(discarded, reads_processed)
+    return metrics
+
+
+def add_read_flow_metrics(entries):
+    order = {"filter_primer": 0, "filter_L1": 1, "filter_L2": 2}
+    chains = {}
+    for entry in entries.values():
+        if entry.get("rule") not in order:
+            continue
+        context = entry.get("context", {})
+        key = (context.get("sample"), context.get("lane"))
+        chains.setdefault(key, []).append(entry)
+
+    for chain in chains.values():
+        previous_kept = None
+        raw_reads = None
+        for entry in sorted(chain, key=lambda item: order[item["rule"]]):
+            metrics = entry.setdefault("metrics", {})
+            input_reads = metrics.get("input_reads")
+            reads_kept = metrics.get("reads_kept")
+            if entry["rule"] == "filter_primer" and input_reads is not None:
+                raw_reads = input_reads
+                metrics["raw_reads_start"] = input_reads
+            if input_reads is None and previous_kept is not None:
+                input_reads = previous_kept
+                metrics["input_reads"] = input_reads
+
+            if input_reads is not None and reads_kept is not None:
+                try:
+                    discarded = int(input_reads) - int(reads_kept)
+                except (TypeError, ValueError):
+                    discarded = None
+                if discarded is not None:
+                    metrics["reads_discarded"] = discarded
+                    metrics["reads_kept_percent_vs_previous"] = percent(reads_kept, input_reads)
+                    metrics["reads_discarded_percent_vs_previous"] = percent(discarded, input_reads)
+                    if raw_reads is not None:
+                        metrics["reads_kept_percent_vs_raw"] = percent(reads_kept, raw_reads)
+
+            if reads_kept is not None:
+                previous_kept = reads_kept
 
 
 def parse_singlecell_csv(path):
@@ -331,14 +434,19 @@ def collect_common_output_metrics(processed_dir, workflow):
 
     for path in processed_dir.glob("*/tmp_data/stats/*_bc_process_*.json"):
         sample = path.parts[-4]
-        attach_or_add(entries, "bc_process", {"sample": sample}, workflow, parse_json_file(path), [str(path)])
+        attach_or_add(entries, "bc_process", {"sample": sample}, workflow, add_processed_written_percentages(parse_json_file(path)), [str(path)])
 
     for path in processed_dir.glob("*/tmp_data/qc_raw_data/*_stats.*.txt"):
         sample = path.parts[-4]
-        step_match = re.search(r"_stats\.(.+)\.txt$", path.name)
-        step = step_match.group(1) if step_match else "unknown"
+        step = filter_step_from_stats_path(path)
         rule = {"primer": "filter_primer", "linker1": "filter_L1", "linker2": "filter_L2"}.get(step, step)
-        attach_or_add(entries, rule, {"sample": sample}, workflow, parse_bbduk_stats(path), [str(path)])
+        context = {"sample": sample}
+        lane = lane_from_stats_path(path, sample)
+        if lane:
+            context["lane"] = lane
+        attach_or_add(entries, rule, context, workflow, parse_bbduk_stats(path), [str(path)])
+
+    add_read_flow_metrics(entries)
 
     return entries
 
