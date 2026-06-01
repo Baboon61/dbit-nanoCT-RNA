@@ -217,6 +217,46 @@ def add_processed_written_percentages(metrics):
     return metrics
 
 
+def collect_bc_process_reads_written(processed_dir):
+    totals = {}
+    for path in processed_dir.glob("*/tmp_data/stats/*_bc_process_*.json"):
+        sample = path.parts[-4]
+        reads_written = parse_json_file(path).get("reads_written")
+        try:
+            totals[sample] = totals.get(sample, 0) + int(reads_written)
+        except (TypeError, ValueError):
+            pass
+    return totals
+
+
+def debarcode_metrics(stats, selected_barcode, bc_process_reads_written):
+    metrics = dict(stats)
+    no_match = 0
+    for key in ["no_barcode_match", "no_spacer_found", "too_short_read"]:
+        try:
+            no_match += int(metrics.pop(key, 0))
+        except (TypeError, ValueError):
+            pass
+    metrics.pop("debarcoded_reads", None)
+    metrics["no_match"] = no_match
+
+    selected_reads = metrics.pop(selected_barcode, 0) if selected_barcode else 0
+    metrics["reads_selected"] = selected_reads
+    if bc_process_reads_written is not None:
+        metrics["reads_selected_percent_vs_bc_process"] = percent(selected_reads, bc_process_reads_written)
+    return metrics
+
+
+def add_metric_totals(total, metrics):
+    for key, value in metrics.items():
+        if key.endswith("_percent_vs_bc_process"):
+            continue
+        if isinstance(value, (int, float)):
+            total[key] = total.get(key, 0) + value
+        else:
+            total[key] = value
+
+
 def add_read_flow_metrics(entries):
     order = {"filter_primer": 0, "filter_L1": 1, "filter_L2": 2}
     chains = {}
@@ -462,7 +502,9 @@ def collect_common_output_metrics(processed_dir, workflow):
 
 def collect_ct_output_metrics(processed_dir, workflow):
     entries = collect_common_output_metrics(processed_dir, workflow)
+    bc_process_reads_written = collect_bc_process_reads_written(processed_dir)
 
+    debarcode_groups = {}
     for path in processed_dir.glob("*/*_*/fastq/*_statistics.yaml"):
         sample = path.parts[-4]
         modality_barcode = path.parts[-3]
@@ -470,9 +512,18 @@ def collect_ct_output_metrics(processed_dir, workflow):
         if "_" in modality_barcode:
             context["modality"], context["barcode"] = modality_barcode.rsplit("_", 1)
         stats = parse_yaml_file(path)
-        metrics = {"debarcoded_reads": sum(value for value in stats.values() if isinstance(value, int))}
-        metrics.update(stats)
-        attach_or_add(entries, "debarcode", context, workflow, metrics, [str(path)])
+        key = (context.get("sample"), context.get("modality"), context.get("barcode"))
+        group = debarcode_groups.setdefault(key, {"context": context, "metrics": {}, "outputs": []})
+        add_metric_totals(group["metrics"], debarcode_metrics(stats, context.get("barcode"), None))
+        group["outputs"].append(str(path))
+
+    for group in debarcode_groups.values():
+        sample = group["context"].get("sample")
+        group["metrics"]["reads_selected_percent_vs_bc_process"] = percent(
+            group["metrics"].get("reads_selected"),
+            bc_process_reads_written.get(sample),
+        )
+        attach_or_add(entries, "debarcode", group["context"], workflow, group["metrics"], group["outputs"])
 
     for modality_dir in processed_dir.glob("*/*_*"):
         if not modality_dir.is_dir():

@@ -59,6 +59,17 @@ FILTER_HIDDEN_METRICS = {
     "reads_discarded",
     "reads_discarded_percent_vs_previous",
 }
+BC_PROCESS_HIDDEN_METRICS = {
+    "reads_discarded",
+    "reads_discarded_percent_vs_previous",
+    "reads_processed",
+}
+DEBARCODE_HIDDEN_METRICS = {
+    "debarcoded_reads",
+    "no_barcode_match",
+    "no_spacer_found",
+    "too_short_read",
+}
 
 
 def escape(value):
@@ -176,8 +187,16 @@ def render_metric_value(key, value, values=None):
         color = retention_color(value)
         if color:
             return f'<span class="metric-tag" style="background-color: {color}; color: #18202a;">{formatted}</span>'
-    if key in {"reads_kept_percent_vs_raw", "reads_kept"} and values:
+    if key == "reads_selected_percent_vs_bc_process":
+        color = retention_color(value)
+        if color:
+            return f'<span class="metric-tag" style="background-color: {color}; color: #18202a;">{formatted}</span>'
+    if key in {"reads_kept_percent_vs_raw", "reads_kept", "reads_written"} and values:
         color = retention_color(values.get("reads_kept_percent_vs_previous"))
+        if color:
+            return f'<span class="metric-tag" style="background-color: {color}; color: #18202a;">{formatted}</span>'
+    if key == "reads_selected" and values:
+        color = retention_color(values.get("reads_selected_percent_vs_bc_process"))
         if color:
             return f'<span class="metric-tag" style="background-color: {color}; color: #18202a;">{formatted}</span>'
     status = metric_status(key, value)
@@ -307,6 +326,10 @@ def render_entry(entry):
     target = entry.get("target_label") or entry.get("rule")
     context = entry_context_label(entry)
     hidden_metrics = FILTER_HIDDEN_METRICS if entry.get("rule") in FILTER_RULES else set()
+    if entry.get("rule") == "bc_process":
+        hidden_metrics = BC_PROCESS_HIDDEN_METRICS
+    if entry.get("rule") == "debarcode":
+        hidden_metrics = DEBARCODE_HIDDEN_METRICS
     metrics = render_key_values(entry.get("metrics") or {}, hidden_keys=hidden_metrics)
     runtime = render_key_values(entry.get("runtime") or {})
     outputs = render_outputs(entry.get("outputs") or [])
