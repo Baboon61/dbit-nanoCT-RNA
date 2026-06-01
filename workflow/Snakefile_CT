@@ -153,6 +153,9 @@ rule all:
     rule_metrics_report=[
       global_done('rule_metrics_report')
     ],
+    rule_metrics_html=[
+      global_done('rule_metrics_html')
+    ],
 
 include: 'Snakefile_spatial_demux.smk'
 include: 'Snakefile_cellranger_whitelist.smk'
@@ -801,4 +804,49 @@ rule rule_metrics_report:
     shell:
         '''
         python3 {params.script} --config {params.config_file} --workflow CT --output {output.report} > {log} 2>&1
+        '''
+
+# Render the rule metrics JSON as a readable HTML report ordered by CT rule order.
+rule rule_metrics_html:
+    input:
+        report = global_report('rule_metrics_CT.json'),
+        rule_metrics_done = global_done('rule_metrics_report')
+    output:
+        report = global_report('rule_metrics_CT.html'),
+        outfile = touch(global_done('rule_metrics_html'))
+    log:
+        global_log('rule_metrics_html')
+    benchmark:
+        global_benchmark('rule_metrics_html')
+    params:
+        script = workflow.basedir + '/scripts/write_rule_metrics_html.py',
+        rule_order = [
+            'filter_primer',
+            'filter_L1',
+            'filter_L2',
+            'bc_process',
+            'seq_file_rename',
+            'debarcode',
+            'get_barcodes_cellranger',
+            'run_cellranger',
+            'bam_to_namesorted',
+            'remove_LA_duplicates',
+            'possort_noLA_bam_file',
+            'bam_noLA_to_fragments_noLA',
+            'sort_sinto_output',
+            'bam_to_bw',
+            'run_macs_broad',
+            'barcode_metrics_peaks',
+            'barcode_metrics_all',
+            'clean_cellranger_output',
+            'spatial_barcodes_to_cells',
+            'create_matrix_peaks',
+            'create_matrix_bins',
+            'create_genebody_and_promoter_matrix',
+            'pipeline_summary',
+            'rule_metrics_report',
+        ]
+    shell:
+        '''
+        python3 {params.script} --input {input.report} --output {output.report} --rule-order {params.rule_order} > {log} 2>&1
         '''

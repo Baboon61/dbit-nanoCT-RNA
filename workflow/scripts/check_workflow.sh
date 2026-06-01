@@ -19,6 +19,7 @@ python3 -m py_compile \
   workflow/scripts/replace_cellranger_barcodes.py \
   workflow/scripts/restore_cellranger_barcodes.py \
   workflow/scripts/write_pipeline_summary.py \
+  workflow/scripts/write_rule_metrics_html.py \
   workflow/scripts/write_rule_metrics_report.py \
   workflow/scripts/write_tool_version.py
 
