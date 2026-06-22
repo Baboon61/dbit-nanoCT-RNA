@@ -84,6 +84,9 @@ METRIC_LABELS = {
     "median_tss_enrichment_score": "median TSS enrichment score",
     "tss_enrichment_score": "median TSS enrichment score",
 }
+RULE_LABELS = {
+    "bc_process": "BC process",
+}
 
 
 def escape(value):
@@ -93,6 +96,8 @@ def escape(value):
 def human_label(value):
     if value in METRIC_LABELS:
         return escape(METRIC_LABELS[value])
+    if value in RULE_LABELS:
+        return escape(RULE_LABELS[value])
     words = ["TSS" if word.lower() == "tss" else word for word in str(value).replace("_", " ").split(" ")]
     return escape(" ".join(words))
 
@@ -439,10 +444,11 @@ def add_tss_enrichment_metric(entry, processed_dir=None):
     for path in entry.get("outputs") or []:
         full_path = output_path(path, processed_dir)
         basename = os.path.basename(full_path)
-        if basename == "metrics_summary.csv":
+        if basename in {"metrics_summary.csv", "summary.csv"}:
             candidates.append(full_path)
         elif basename == "singlecell.csv":
             candidates.append(os.path.join(os.path.dirname(full_path), "metrics_summary.csv"))
+            candidates.append(os.path.join(os.path.dirname(full_path), "summary.csv"))
     for path in candidates:
         value = read_tss_enrichment(path)
         if value is not None:

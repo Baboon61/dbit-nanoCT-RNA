@@ -618,9 +618,11 @@ def collect_ct_output_metrics(processed_dir, workflow):
             singlecell = outs / "singlecell.csv"
             if singlecell.exists():
                 metrics.update(parse_singlecell_csv(singlecell))
-            metrics_summary = outs / "metrics_summary.csv"
-            if metrics_summary.exists():
-                metrics.update(cellranger_tss_metrics(metrics_summary))
+            metrics_summaries = [outs / "metrics_summary.csv", outs / "summary.csv"]
+            for metrics_summary in metrics_summaries:
+                if metrics_summary.exists():
+                    metrics.update(cellranger_tss_metrics(metrics_summary))
+                    break
             fragments = outs / "fragments.tsv.gz"
             if fragments.exists():
                 metrics["fragments"] = count_lines(fragments)
@@ -630,7 +632,7 @@ def collect_ct_output_metrics(processed_dir, workflow):
             bam = outs / "possorted_bam.bam"
             if bam.exists():
                 metrics["possorted_bam_bytes"] = file_size(bam)
-            attach_or_add(entries, "run_cellranger", context, workflow, metrics, [str(item) for item in [singlecell, metrics_summary, fragments, peaks, bam] if item.exists()])
+            attach_or_add(entries, "run_cellranger", context, workflow, metrics, [str(item) for item in [singlecell, *metrics_summaries, fragments, peaks, bam] if item.exists()])
 
         for stats_file in (modality_dir / "cellranger" / "outs").glob("*_stats.txt"):
             attach_or_add(entries, "remove_LA_duplicates", context, workflow, parse_json_file(stats_file), [str(stats_file)])
