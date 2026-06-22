@@ -76,8 +76,9 @@ DEBARCODE_HIDDEN_METRICS = {
 }
 RUN_CELLRANGER_HIDDEN_METRICS = {"cell_barcodes", "fragment_count_histogram", "fragments"}
 METRIC_LABELS = {
-    "passed_filters_sum": "Cell Ranger passed-filter fragments",
-    "peak_region_fragments_sum": "Fragments in peaks",
+    "passed_filters_sum": "cell Ranger passed-filter fragments",
+    "peak_region_fragments_sum": "fragments in peaks",
+    "tss_enrichment_score": "TSS enrichment score",
 }
 
 
@@ -406,29 +407,32 @@ def render_fragment_histogram(entry):
     max_cells = max((numeric_value(item.get("cells")) or 0 for item in histogram if isinstance(item, dict)), default=0)
     if max_cells <= 0:
         return ""
+    labels = []
     for item in histogram:
         if not isinstance(item, dict):
             continue
         cells = numeric_value(item.get("cells")) or 0
         label = str(item.get("label", ""))
+        labels.append(label)
         height = max(3, round((cells / max_cells) * 100))
         title = f'{label} fragments: {format_value(int(cells))} cells'
         bars.append(
             '<div class="histogram-bar" '
-            f'style="height: {height}%;" title="{escape(title)}">'
-            f'<span>{format_value(int(cells))}</span>'
-            f'<em>{escape(label)}</em>'
-            '</div>'
+            f'style="height: {height}%;" title="{escape(title)}"></div>'
         )
     if not bars:
         return ""
+    scale = ""
+    if labels:
+        scale = f'<div class="histogram-scale"><span>{escape(labels[0])}</span><span>{escape(labels[-1])}</span></div>'
     return (
         '<section class="fragment-graph">'
-        '<h4>Fragments Per Cell</h4>'
+        '<h4>Fragments per cell</h4>'
         '<div class="histogram" aria-label="Cell count by fragment count">'
         + "".join(bars)
         + "</div>"
-        '<div class="axis-label">fragments</div>'
+        + scale
+        + '<div class="axis-label">number of fragments</div>'
         "</section>"
     )
 
@@ -767,57 +771,35 @@ def build_html(report, rule_order):
     .fragment-graph {{
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 6px;
     }}
     .histogram {{
       align-items: flex-end;
       border-bottom: 1px solid var(--line);
       border-left: 1px solid var(--line);
       display: flex;
-      gap: 3px;
-      height: 180px;
+      gap: 2px;
+      height: 120px;
       min-width: 0;
       overflow-x: auto;
-      padding: 18px 4px 0 8px;
+      padding: 8px 4px 0 8px;
     }}
     .histogram-bar {{
       background: #d7e7ff;
-      border: 1px solid #9fc0ee;
-      border-bottom: 0;
-      border-radius: 4px 4px 0 0;
-      color: #173b73;
-      flex: 1 0 18px;
-      min-width: 18px;
-      position: relative;
+      border-radius: 3px 3px 0 0;
+      flex: 1 0 8px;
+      min-width: 8px;
     }}
-    .histogram-bar span {{
-      font-size: 0.65rem;
-      font-weight: 650;
-      left: 50%;
-      line-height: 1;
-      position: absolute;
-      top: -13px;
-      transform: translateX(-50%);
-      white-space: nowrap;
-    }}
-    .histogram-bar em {{
-      bottom: -24px;
+    .histogram-scale {{
       color: var(--muted);
-      font-size: 0.65rem;
-      font-style: normal;
-      left: 50%;
-      max-width: 48px;
-      overflow: hidden;
-      position: absolute;
-      text-align: center;
-      text-overflow: ellipsis;
-      transform: translateX(-50%);
-      white-space: nowrap;
+      display: flex;
+      font-size: 0.68rem;
+      justify-content: space-between;
+      padding-left: 8px;
     }}
     .axis-label {{
       color: var(--muted);
       font-size: 0.72rem;
-      padding-top: 14px;
       text-align: center;
     }}
     .metric-tag {{
