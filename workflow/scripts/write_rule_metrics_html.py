@@ -10,7 +10,6 @@ DEFAULT_RULE_ORDER = [
     "filter_L1",
     "filter_L2",
     "bc_process",
-    "seq_file_rename",
     "debarcode",
     "get_barcodes_cellranger",
     "run_cellranger",
@@ -46,6 +45,7 @@ RULE_ALIASES = {
 
 
 HIDDEN_CONTEXT_KEYS = {"benchmark_file", "scope"}
+HIDDEN_RULES = {"seq_file_rename"}
 RUNTIME_KEYS = ["h:m:s"]
 CONTEXT_ORDER = ["sample", "modality", "barcode", "number", "lane", "suffix", "ext", "matrix"]
 GOOD_KEYWORDS = ("kept", "matched", "passed", "written", "cell_barcodes", "fragments", "peaks")
@@ -78,6 +78,10 @@ def escape(value):
 
 def human_label(value):
     return escape(str(value).replace("_", " "))
+
+
+def css_suffix(value):
+    return "".join(char if char.isalnum() or char in {"-", "_"} else "-" for char in str(value))
 
 
 def format_value(value):
@@ -271,13 +275,13 @@ def entry_context_label(entry):
 def render_context_tags(entry):
     context = clean_context(entry)
     if not context:
-        return '<span class="muted">global</span>'
+        return ""
     keys = [key for key in CONTEXT_ORDER if key in context]
     keys.extend(key for key in sorted(set(context) - set(CONTEXT_ORDER)))
     tags = []
     for key in keys:
         tags.append(
-            '<span class="context-tag">'
+            f'<span class="context-tag context-tag-{css_suffix(key)}">'
             f'<span>{human_label(key)}</span>'
             f'<b>{escape(context[key])}</b>'
             '</span>'
@@ -436,7 +440,7 @@ def total_raw_reads(entries):
 
 
 def build_html(report, rule_order):
-    entries = merge_entries(report.get("rules") or [])
+    entries = [entry for entry in merge_entries(report.get("rules") or []) if entry.get("rule") not in HIDDEN_RULES]
     order_index = {rule: index for index, rule in enumerate(rule_order)}
     groups = defaultdict(list)
     for entry in entries:
@@ -547,11 +551,12 @@ def build_html(report, rule_order):
       text-transform: capitalize;
     }}
     .rule-title span {{
-      color: var(--accent);
-      background: var(--accent-soft);
+      background: #e8edf3;
       border-radius: 999px;
+      color: #354052;
       padding: 3px 10px;
       font-size: 0.86rem;
+      font-weight: 650;
       white-space: nowrap;
     }}
     .entry {{
@@ -615,6 +620,42 @@ def build_html(report, rule_order):
     .context-tag b {{
       font-weight: 650;
       padding: 3px 8px;
+    }}
+    .context-tag-sample {{
+      background: #eaf2ff;
+      border-color: #bfd4f5;
+      color: #173b73;
+    }}
+    .context-tag-sample span {{
+      background: #d7e7ff;
+      color: #315f9d;
+    }}
+    .context-tag-modality {{
+      background: #f2ecff;
+      border-color: #d7c6f4;
+      color: #4b2c78;
+    }}
+    .context-tag-modality span {{
+      background: #e5d8fb;
+      color: #664996;
+    }}
+    .context-tag-barcode {{
+      background: #fff3df;
+      border-color: #f2c985;
+      color: #714600;
+    }}
+    .context-tag-barcode span {{
+      background: #ffe4b8;
+      color: #8a5c12;
+    }}
+    .context-tag-lane {{
+      background: #e8f6ee;
+      border-color: #b9dcc8;
+      color: #195737;
+    }}
+    .context-tag-lane span {{
+      background: #d5efdf;
+      color: #31704b;
     }}
     .entry-grid {{
       display: grid;
