@@ -80,7 +80,9 @@ METRIC_LABELS = {
     "passed_filters_sum": "cellranger fragments",
     "peak_region_fragments_sum": "fragments in peaks",
     "possorted_bam_bytes": "bam file size",
-    "tss_enrichment_score": "TSS enrichment score",
+    "TSS_fragments_sum": "fragments in TSS",
+    "median_tss_enrichment_score": "median TSS enrichment score",
+    "tss_enrichment_score": "median TSS enrichment score",
 }
 
 
@@ -419,7 +421,7 @@ def read_tss_enrichment(path):
     if len(rows) < 2:
         return None
     summary = {metric_summary_key(key): value.strip() for key, value in zip(rows[0], rows[1])}
-    for key in ["tss_enrichment_score", "tss_enrichment"]:
+    for key in ["median_tss_enrichment_score", "median_tss_enrichment", "tss_enrichment_score", "tss_enrichment"]:
         if summary.get(key):
             return summary[key]
     return None
@@ -429,7 +431,9 @@ def add_tss_enrichment_metric(entry, processed_dir=None):
     if entry.get("rule") != "run_cellranger":
         return
     metrics = entry.setdefault("metrics", {})
-    if metrics.get("tss_enrichment_score") is not None:
+    if metrics.get("median_tss_enrichment_score") is not None:
+        metrics.pop("tss_enrichment_score", None)
+        metrics.pop("tss_enrichment", None)
         return
     candidates = []
     for path in entry.get("outputs") or []:
@@ -442,7 +446,13 @@ def add_tss_enrichment_metric(entry, processed_dir=None):
     for path in candidates:
         value = read_tss_enrichment(path)
         if value is not None:
-            metrics["tss_enrichment_score"] = value
+            metrics["median_tss_enrichment_score"] = value
+            metrics.pop("tss_enrichment_score", None)
+            metrics.pop("tss_enrichment", None)
+            return
+    for key in ["tss_enrichment_score", "tss_enrichment"]:
+        if metrics.get(key) is not None:
+            metrics["median_tss_enrichment_score"] = metrics.pop(key)
             return
 
 
@@ -481,21 +491,40 @@ def trim_histogram_plateau(histogram):
     return items
 
 
-def axis_ticks(minimum, maximum, count=5):
-    if minimum is None or maximum is None:
+def rounded_secondary_tick(value):
+    if value is None:
+        return None
+    value = int(value)
+    if value <= 0:
+        return 0
+    if value >= 1000:
+        unit = 1000
+    elif value >= 100:
+        unit = 100
+    elif value >= 10:
+        unit = 10
+    else:
+        unit = 1
+    return max(unit, (value // unit) * unit)
+
+
+def axis_ticks(maximum, count=5):
+    if maximum is None:
         return []
-    if count <= 1 or minimum == maximum:
-        return [minimum]
-    step = (maximum - minimum) / (count - 1)
-    return [minimum + step * index for index in range(count)]
+    maximum = int(round(maximum))
+    if count <= 1 or maximum <= 0:
+        return [0]
+    ticks = [0]
+    for index in range(1, count - 1):
+        ticks.append(rounded_secondary_tick(maximum * index / (count - 1)))
+    ticks.append(maximum)
+    return ticks
 
 
 def format_axis_tick(value):
     if value is None:
         return ""
-    if abs(value - round(value)) < 0.01:
-        return format_value(int(round(value)))
-    return format_value(round(value, 1))
+    return format_value(int(round(value)))
 
 
 def render_fragment_histogram(entry):
@@ -511,10 +540,8 @@ def render_fragment_histogram(entry):
     max_cells = max(cell_counts, default=0)
     if max_cells <= 0:
         return ""
-    min_cells = min(cell_counts)
-    y_mid = min_cells + (max_cells - min_cells) / 2
     y_ticks = []
-    for value in [max_cells, y_mid, min_cells]:
+    for value in reversed(axis_ticks(max_cells, count=3)):
         bottom = 0 if max_cells == 0 else max(0, min(100, (value / max_cells) * 100))
         y_ticks.append(
             f'<div class="histogram-y-tick" style="bottom: {bottom}%;">'
@@ -530,12 +557,11 @@ def render_fragment_histogram(entry):
         bars.append(
             '<div class="histogram-bar" '
             f'style="height: {height}%;" title="{escape(title)}"></div>'
-    )
+        )
     if not bars:
         return ""
-    min_x = histogram_x_value(histogram[0], "start")
     max_x = histogram_x_value(histogram[-1], "end")
-    x_ticks = "".join(f"<span>{escape(format_axis_tick(value))}</span>" for value in axis_ticks(min_x, max_x, count=5))
+    x_ticks = "".join(f"<span>{escape(format_axis_tick(value))}</span>" for value in axis_ticks(max_x, count=5))
     return (
         '<section class="fragment-graph">'
         '<h4>Fragments per cell</h4>'
@@ -900,7 +926,6 @@ def build_html(report, rule_order):
       position: relative;
     }}
     .histogram-y-tick {{
-      border-top: 1px solid #edf1f4;
       left: 0;
       position: absolute;
       right: 0;

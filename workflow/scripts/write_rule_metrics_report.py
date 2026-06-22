@@ -432,9 +432,9 @@ def parse_cellranger_metrics_summary(path):
 
 def cellranger_tss_metrics(path):
     summary = parse_cellranger_metrics_summary(path)
-    for key in ["tss_enrichment_score", "tss_enrichment"]:
+    for key in ["median_tss_enrichment_score", "median_tss_enrichment", "tss_enrichment_score", "tss_enrichment"]:
         if key in summary:
-            return {"tss_enrichment_score": summary[key]}
+            return {"median_tss_enrichment_score": summary[key]}
     return {}
 
 
