@@ -1,4 +1,5 @@
 import argparse
+import csv
 import html
 import json
 import os
@@ -76,8 +77,9 @@ DEBARCODE_HIDDEN_METRICS = {
 }
 RUN_CELLRANGER_HIDDEN_METRICS = {"cell_barcodes", "fragment_count_histogram", "fragments"}
 METRIC_LABELS = {
-    "passed_filters_sum": "cell Ranger passed-filter fragments",
+    "passed_filters_sum": "cellranger fragments",
     "peak_region_fragments_sum": "fragments in peaks",
+    "possorted_bam_bytes": "bam file size",
     "tss_enrichment_score": "TSS enrichment score",
 }
 
@@ -397,47 +399,161 @@ def render_outputs(outputs, processed_dir=None):
     return f"<ul>{items}</ul>"
 
 
+def output_path(path, processed_dir=None):
+    if os.path.isabs(str(path)) or not processed_dir:
+        return str(path)
+    return os.path.join(processed_dir, str(path))
+
+
+def metric_summary_key(value):
+    normalized = str(value).strip().lower().replace(" ", "_")
+    return "".join(char for char in normalized if char.isalnum() or char == "_")
+
+
+def read_tss_enrichment(path):
+    try:
+        with open(path, "r", newline="") as handle:
+            rows = list(csv.reader(handle))
+    except OSError:
+        return None
+    if len(rows) < 2:
+        return None
+    summary = {metric_summary_key(key): value.strip() for key, value in zip(rows[0], rows[1])}
+    for key in ["tss_enrichment_score", "tss_enrichment"]:
+        if summary.get(key):
+            return summary[key]
+    return None
+
+
+def add_tss_enrichment_metric(entry, processed_dir=None):
+    if entry.get("rule") != "run_cellranger":
+        return
+    metrics = entry.setdefault("metrics", {})
+    if metrics.get("tss_enrichment_score") is not None:
+        return
+    candidates = []
+    for path in entry.get("outputs") or []:
+        full_path = output_path(path, processed_dir)
+        basename = os.path.basename(full_path)
+        if basename == "metrics_summary.csv":
+            candidates.append(full_path)
+        elif basename == "singlecell.csv":
+            candidates.append(os.path.join(os.path.dirname(full_path), "metrics_summary.csv"))
+    for path in candidates:
+        value = read_tss_enrichment(path)
+        if value is not None:
+            metrics["tss_enrichment_score"] = value
+            return
+
+
+def histogram_cell_count(item):
+    if not isinstance(item, dict):
+        return None
+    value = numeric_value(item.get("cells"))
+    return int(value) if value is not None else None
+
+
+def histogram_x_value(item, key):
+    if not isinstance(item, dict):
+        return None
+    value = numeric_value(item.get(key))
+    if value is not None:
+        return value
+    label = str(item.get("label", ""))
+    if "-" in label:
+        label = label.split("-", 1)[0 if key == "start" else 1]
+    return numeric_value(label)
+
+
+def trim_histogram_plateau(histogram):
+    items = [item for item in histogram if isinstance(item, dict) and histogram_cell_count(item) is not None]
+    if len(items) < 8:
+        return items
+    counts = [histogram_cell_count(item) for item in items]
+    max_count = max(counts)
+    tail_count = counts[-1]
+    tail_start = len(counts) - 1
+    while tail_start > 0 and counts[tail_start - 1] == tail_count:
+        tail_start -= 1
+    tail_length = len(counts) - tail_start
+    if tail_length >= 4 and tail_count <= max(2, max_count * 0.1):
+        return items[: tail_start + 1]
+    return items
+
+
+def axis_ticks(minimum, maximum, count=5):
+    if minimum is None or maximum is None:
+        return []
+    if count <= 1 or minimum == maximum:
+        return [minimum]
+    step = (maximum - minimum) / (count - 1)
+    return [minimum + step * index for index in range(count)]
+
+
+def format_axis_tick(value):
+    if value is None:
+        return ""
+    if abs(value - round(value)) < 0.01:
+        return format_value(int(round(value)))
+    return format_value(round(value, 1))
+
+
 def render_fragment_histogram(entry):
     if entry.get("rule") != "run_cellranger":
         return ""
     histogram = (entry.get("metrics") or {}).get("fragment_count_histogram") or []
     if not isinstance(histogram, list):
         return ""
+    histogram = trim_histogram_plateau(histogram)
     bars = []
-    max_cells = max((numeric_value(item.get("cells")) or 0 for item in histogram if isinstance(item, dict)), default=0)
+    cell_counts = [histogram_cell_count(item) for item in histogram]
+    cell_counts = [count for count in cell_counts if count is not None]
+    max_cells = max(cell_counts, default=0)
     if max_cells <= 0:
         return ""
-    labels = []
+    min_cells = min(cell_counts)
+    y_mid = min_cells + (max_cells - min_cells) / 2
+    y_ticks = []
+    for value in [max_cells, y_mid, min_cells]:
+        bottom = 0 if max_cells == 0 else max(0, min(100, (value / max_cells) * 100))
+        y_ticks.append(
+            f'<div class="histogram-y-tick" style="bottom: {bottom}%;">'
+            f'<span>{format_axis_tick(value)}</span>'
+            '</div>'
+        )
+
     for item in histogram:
-        if not isinstance(item, dict):
-            continue
-        cells = numeric_value(item.get("cells")) or 0
+        cells = histogram_cell_count(item) or 0
         label = str(item.get("label", ""))
-        labels.append(label)
         height = max(3, round((cells / max_cells) * 100))
         title = f'{label} fragments: {format_value(int(cells))} cells'
         bars.append(
             '<div class="histogram-bar" '
             f'style="height: {height}%;" title="{escape(title)}"></div>'
-        )
+    )
     if not bars:
         return ""
-    scale = ""
-    if labels:
-        scale = f'<div class="histogram-scale"><span>{escape(labels[0])}</span><span>{escape(labels[-1])}</span></div>'
+    min_x = histogram_x_value(histogram[0], "start")
+    max_x = histogram_x_value(histogram[-1], "end")
+    x_ticks = "".join(f"<span>{escape(format_axis_tick(value))}</span>" for value in axis_ticks(min_x, max_x, count=5))
     return (
         '<section class="fragment-graph">'
         '<h4>Fragments per cell</h4>'
+        '<div class="histogram-area">'
+        '<div class="histogram-y-ticks">'
+        + "".join(y_ticks)
+        + "</div>"
         '<div class="histogram" aria-label="Cell count by fragment count">'
         + "".join(bars)
         + "</div>"
-        + scale
-        + '<div class="axis-label">number of fragments</div>'
+        + "</div>"
+        + f'<div class="histogram-x-ticks">{x_ticks}</div>'
         "</section>"
     )
 
 
 def render_entry(entry, processed_dir=None):
+    add_tss_enrichment_metric(entry, processed_dir=processed_dir)
     target = entry.get("target_label") or entry.get("rule")
     context = render_context_tags(entry)
     runtime = entry.get("runtime") or {}
@@ -773,6 +889,27 @@ def build_html(report, rule_order):
       flex-direction: column;
       gap: 6px;
     }}
+    .histogram-area {{
+      display: grid;
+      gap: 6px;
+      grid-template-columns: 34px minmax(0, 1fr);
+    }}
+    .histogram-y-ticks {{
+      color: var(--muted);
+      font-size: 0.68rem;
+      position: relative;
+    }}
+    .histogram-y-tick {{
+      border-top: 1px solid #edf1f4;
+      left: 0;
+      position: absolute;
+      right: 0;
+    }}
+    .histogram-y-tick span {{
+      display: block;
+      line-height: 1;
+      transform: translateY(-50%);
+    }}
     .histogram {{
       align-items: flex-end;
       border-bottom: 1px solid var(--line);
@@ -790,17 +927,12 @@ def build_html(report, rule_order):
       flex: 1 0 8px;
       min-width: 8px;
     }}
-    .histogram-scale {{
+    .histogram-x-ticks {{
       color: var(--muted);
       display: flex;
       font-size: 0.68rem;
       justify-content: space-between;
-      padding-left: 8px;
-    }}
-    .axis-label {{
-      color: var(--muted);
-      font-size: 0.72rem;
-      text-align: center;
+      padding-left: 40px;
     }}
     .metric-tag {{
       display: inline-block;
