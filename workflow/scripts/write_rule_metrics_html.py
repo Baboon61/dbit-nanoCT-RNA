@@ -13,22 +13,15 @@ DEFAULT_RULE_ORDER = [
     "debarcode",
     "get_barcodes_cellranger",
     "run_cellranger",
-    "bam_to_namesorted",
     "remove_LA_duplicates",
-    "possort_noLA_bam_file",
-    "bam_noLA_to_fragments_noLA",
     "sort_sinto_output",
     "bam_to_bw",
     "run_macs_broad",
     "barcode_metrics_peaks",
     "barcode_metrics_all",
-    "clean_cellranger_output",
-    "spatial_barcodes_to_cells",
     "create_matrix_peaks",
     "create_matrix_bins",
     "create_genebody_and_promoter_matrix",
-    "pipeline_summary",
-    "rule_metrics_report",
 ]
 
 
@@ -45,7 +38,18 @@ RULE_ALIASES = {
 
 
 HIDDEN_CONTEXT_KEYS = {"benchmark_file", "scope"}
-HIDDEN_RULES = {"seq_file_rename"}
+HIDDEN_RULES = {
+    "all_spatial_cells",
+    "bam_noLA_to_fragments_noLA",
+    "bam_to_namesorted",
+    "clean_cellranger_output",
+    "pipeline_summary",
+    "possort_noLA_bam_file",
+    "rule_metrics_html",
+    "rule_metrics_report",
+    "seq_file_rename",
+    "spatial_barcodes_to_cells",
+}
 RUNTIME_KEYS = ["h:m:s"]
 CONTEXT_ORDER = ["sample", "modality", "barcode", "number", "lane", "suffix", "ext", "matrix"]
 GOOD_KEYWORDS = ("kept", "matched", "passed", "written", "cell_barcodes", "fragments", "peaks")
@@ -70,6 +74,11 @@ DEBARCODE_HIDDEN_METRICS = {
     "no_spacer_found",
     "too_short_read",
 }
+RUN_CELLRANGER_HIDDEN_METRICS = {"cell_barcodes", "fragment_count_histogram", "fragments"}
+METRIC_LABELS = {
+    "passed_filters_sum": "Cell Ranger passed-filter fragments",
+    "peak_region_fragments_sum": "Fragments in peaks",
+}
 
 
 def escape(value):
@@ -77,7 +86,10 @@ def escape(value):
 
 
 def human_label(value):
-    return escape(str(value).replace("_", " "))
+    if value in METRIC_LABELS:
+        return escape(METRIC_LABELS[value])
+    words = ["TSS" if word.lower() == "tss" else word for word in str(value).replace("_", " ").split(" ")]
+    return escape(" ".join(words))
 
 
 def css_suffix(value):
@@ -213,6 +225,10 @@ def debarcode_selection_color(value):
 
 def render_metric_value(key, value, values=None):
     formatted = format_metric(key, value)
+    if key in {"barcodes_reported", "possorted_bam_bytes"}:
+        return f'<span class="metric-tag info">{formatted}</span>'
+    if key == "no_match":
+        return f'<span class="metric-tag warn">{formatted}</span>'
     if key == "reads_kept_percent_vs_previous":
         color = retention_color(value)
         if color:
@@ -380,6 +396,43 @@ def render_outputs(outputs, processed_dir=None):
     return f"<ul>{items}</ul>"
 
 
+def render_fragment_histogram(entry):
+    if entry.get("rule") != "run_cellranger":
+        return ""
+    histogram = (entry.get("metrics") or {}).get("fragment_count_histogram") or []
+    if not isinstance(histogram, list):
+        return ""
+    bars = []
+    max_cells = max((numeric_value(item.get("cells")) or 0 for item in histogram if isinstance(item, dict)), default=0)
+    if max_cells <= 0:
+        return ""
+    for item in histogram:
+        if not isinstance(item, dict):
+            continue
+        cells = numeric_value(item.get("cells")) or 0
+        label = str(item.get("label", ""))
+        height = max(3, round((cells / max_cells) * 100))
+        title = f'{label} fragments: {format_value(int(cells))} cells'
+        bars.append(
+            '<div class="histogram-bar" '
+            f'style="height: {height}%;" title="{escape(title)}">'
+            f'<span>{format_value(int(cells))}</span>'
+            f'<em>{escape(label)}</em>'
+            '</div>'
+        )
+    if not bars:
+        return ""
+    return (
+        '<section class="fragment-graph">'
+        '<h4>Fragments Per Cell</h4>'
+        '<div class="histogram" aria-label="Cell count by fragment count">'
+        + "".join(bars)
+        + "</div>"
+        '<div class="axis-label">fragments</div>'
+        "</section>"
+    )
+
+
 def render_entry(entry, processed_dir=None):
     target = entry.get("target_label") or entry.get("rule")
     context = render_context_tags(entry)
@@ -390,8 +443,13 @@ def render_entry(entry, processed_dir=None):
         hidden_metrics = BC_PROCESS_HIDDEN_METRICS
     if entry.get("rule") == "debarcode":
         hidden_metrics = DEBARCODE_HIDDEN_METRICS
+    if entry.get("rule") == "run_cellranger":
+        hidden_metrics = RUN_CELLRANGER_HIDDEN_METRICS
     last_metrics = {"no_match"} if entry.get("rule") == "debarcode" else set()
+    if entry.get("rule") == "run_cellranger":
+        last_metrics = {"barcodes_reported", "possorted_bam_bytes"}
     metrics = render_key_values(entry.get("metrics") or {}, hidden_keys=hidden_metrics, last_keys=last_metrics)
+    graph = render_fragment_histogram(entry)
     outputs = render_outputs(entry.get("outputs") or [], processed_dir=processed_dir)
     return f"""
       <article class="entry">
@@ -407,6 +465,7 @@ def render_entry(entry, processed_dir=None):
             <h4>Metrics</h4>
             {metrics}
           </section>
+          {graph}
           <section class="outputs">
             <h4>Outputs</h4>
             {outputs}
@@ -659,7 +718,7 @@ def build_html(report, rule_order):
     }}
     .entry-grid {{
       display: grid;
-      grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr);
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
       gap: 0;
     }}
     .entry-grid section {{
@@ -705,6 +764,62 @@ def build_html(report, rule_order):
       font-size: 0.86rem;
       overflow-wrap: anywhere;
     }}
+    .fragment-graph {{
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }}
+    .histogram {{
+      align-items: flex-end;
+      border-bottom: 1px solid var(--line);
+      border-left: 1px solid var(--line);
+      display: flex;
+      gap: 3px;
+      height: 180px;
+      min-width: 0;
+      overflow-x: auto;
+      padding: 18px 4px 0 8px;
+    }}
+    .histogram-bar {{
+      background: #d7e7ff;
+      border: 1px solid #9fc0ee;
+      border-bottom: 0;
+      border-radius: 4px 4px 0 0;
+      color: #173b73;
+      flex: 1 0 18px;
+      min-width: 18px;
+      position: relative;
+    }}
+    .histogram-bar span {{
+      font-size: 0.65rem;
+      font-weight: 650;
+      left: 50%;
+      line-height: 1;
+      position: absolute;
+      top: -13px;
+      transform: translateX(-50%);
+      white-space: nowrap;
+    }}
+    .histogram-bar em {{
+      bottom: -24px;
+      color: var(--muted);
+      font-size: 0.65rem;
+      font-style: normal;
+      left: 50%;
+      max-width: 48px;
+      overflow: hidden;
+      position: absolute;
+      text-align: center;
+      text-overflow: ellipsis;
+      transform: translateX(-50%);
+      white-space: nowrap;
+    }}
+    .axis-label {{
+      color: var(--muted);
+      font-size: 0.72rem;
+      padding-top: 14px;
+      text-align: center;
+    }}
     .metric-tag {{
       display: inline-block;
       border-radius: 999px;
@@ -723,6 +838,10 @@ def build_html(report, rule_order):
     .metric-tag.bad {{
       background: #f9d8d6;
       color: #9b2c24;
+    }}
+    .metric-tag.info {{
+      background: #d7e7ff;
+      color: #173b73;
     }}
     .muted {{
       color: var(--muted);

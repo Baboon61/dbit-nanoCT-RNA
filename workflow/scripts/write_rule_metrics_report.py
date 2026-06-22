@@ -329,6 +329,7 @@ def parse_singlecell_csv(path):
     except OSError:
         return metrics
 
+    rows = [row for row in rows if not is_no_barcode_row(row)]
     metrics["barcodes_reported"] = len(rows)
     for column in ["passed_filters", "peak_region_fragments", "TSS_fragments"]:
         if rows and column in rows[0]:
@@ -344,7 +345,54 @@ def parse_singlecell_csv(path):
         if rows and column in rows[0]:
             metrics["cell_barcodes"] = sum(1 for row in rows if str(row.get(column, "")).lower() in {"1", "true", "yes"})
             break
+    histogram = fragment_count_histogram(rows)
+    if histogram:
+        metrics["fragment_count_histogram"] = histogram
     return metrics
+
+
+def is_no_barcode_row(row):
+    for column in ["barcode", "cell_id"]:
+        if str(row.get(column, "")).strip().upper() == "NO_BARCODE":
+            return True
+    first_value = next(iter(row.values()), "")
+    if str(first_value).strip().upper() == "NO_BARCODE":
+        return True
+    return False
+
+
+def fragment_count_histogram(rows, max_bins=24):
+    values = []
+    for row in rows:
+        try:
+            value = int(float(row.get("passed_filters") or 0))
+        except ValueError:
+            continue
+        if value >= 0:
+            values.append(value)
+    if not values:
+        return []
+
+    counts = {}
+    for value in values:
+        counts[value] = counts.get(value, 0) + 1
+    if len(counts) <= max_bins:
+        return [{"label": str(value), "start": value, "end": value, "cells": counts[value]} for value in sorted(counts)]
+
+    minimum = min(values)
+    maximum = max(values)
+    width = max(1, (maximum - minimum + max_bins) // max_bins)
+    bins = {}
+    for value in values:
+        start = minimum + ((value - minimum) // width) * width
+        end = min(maximum, start + width - 1)
+        bins[start] = {"start": start, "end": end, "cells": bins.get(start, {}).get("cells", 0) + 1}
+    histogram = []
+    for start in sorted(bins):
+        item = bins[start]
+        label = str(item["start"]) if item["start"] == item["end"] else f'{item["start"]}-{item["end"]}'
+        histogram.append({"label": label, **item})
+    return histogram
 
 
 def parse_barcode_counts(path):
@@ -380,6 +428,14 @@ def parse_cellranger_metrics_summary(path):
         if key:
             metrics[key] = value.strip()
     return metrics
+
+
+def cellranger_tss_metrics(path):
+    summary = parse_cellranger_metrics_summary(path)
+    for key in ["tss_enrichment_score", "tss_enrichment"]:
+        if key in summary:
+            return {"tss_enrichment_score": summary[key]}
+    return {}
 
 
 def matrix_metrics(path):
@@ -562,6 +618,9 @@ def collect_ct_output_metrics(processed_dir, workflow):
             singlecell = outs / "singlecell.csv"
             if singlecell.exists():
                 metrics.update(parse_singlecell_csv(singlecell))
+            metrics_summary = outs / "metrics_summary.csv"
+            if metrics_summary.exists():
+                metrics.update(cellranger_tss_metrics(metrics_summary))
             fragments = outs / "fragments.tsv.gz"
             if fragments.exists():
                 metrics["fragments"] = count_lines(fragments)
@@ -571,7 +630,7 @@ def collect_ct_output_metrics(processed_dir, workflow):
             bam = outs / "possorted_bam.bam"
             if bam.exists():
                 metrics["possorted_bam_bytes"] = file_size(bam)
-            attach_or_add(entries, "run_cellranger", context, workflow, metrics, [str(item) for item in [singlecell, fragments, peaks, bam] if item.exists()])
+            attach_or_add(entries, "run_cellranger", context, workflow, metrics, [str(item) for item in [singlecell, metrics_summary, fragments, peaks, bam] if item.exists()])
 
         for stats_file in (modality_dir / "cellranger" / "outs").glob("*_stats.txt"):
             attach_or_add(entries, "remove_LA_duplicates", context, workflow, parse_json_file(stats_file), [str(stats_file)])
