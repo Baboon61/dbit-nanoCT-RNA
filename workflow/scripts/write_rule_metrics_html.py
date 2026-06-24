@@ -194,7 +194,7 @@ def render_metric_header(key, rule=None):
     return (
         '<span class="metric-label">'
         f'<span>{metric_label(key, rule=rule)}</span>'
-        f'<span class="metric-help" tabindex="0" title="{description}" data-tooltip="{description}" aria-label="{description}">!</span>'
+        f'<span class="metric-help" tabindex="0" data-tooltip="{description}" aria-label="{description}">!</span>'
         '</span>'
     )
 
@@ -900,7 +900,7 @@ def build_html(report, rule_order):
       border-radius: 8px;
       box-shadow: var(--shadow);
       margin: 10px 0;
-      overflow: hidden;
+      overflow: visible;
     }}
     .entry-head {{
       display: flex;
@@ -1039,7 +1039,6 @@ def build_html(report, rule_order):
       background: #e8edf3;
       border-radius: 50%;
       color: #354052;
-      cursor: help;
       display: inline-flex;
       font-size: 0.62rem;
       font-weight: 800;
@@ -1058,13 +1057,13 @@ def build_html(report, rule_order):
       content: attr(data-tooltip);
       font-size: 0.72rem;
       font-weight: 500;
-      left: 50%;
+      left: 0;
       line-height: 1.3;
       max-width: min(320px, 70vw);
       min-width: 220px;
       padding: 7px 8px;
       position: absolute;
-      transform: translateX(-50%);
+      transform: none;
       white-space: normal;
       z-index: 5;
     }}
