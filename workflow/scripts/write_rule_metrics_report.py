@@ -468,16 +468,10 @@ def cellranger_tss_metrics(path):
 
 
 def matrix_metrics(path):
-    files = [item for item in path.rglob("*") if item.is_file()]
-    metrics = {
-        "file_count": len(files),
-        "total_bytes": sum(file_size(item) or 0 for item in files),
-    }
-    for item in files:
-        if item.name.endswith(".mtx") or item.name.endswith(".mtx.gz"):
-            metrics["matrix_non_comment_lines"] = count_bed_records(item)
-            break
-    return metrics
+    features = path / "features.tsv.gz"
+    if features.exists():
+        return {"features_tsv_lines": count_lines(features)}
+    return {}
 
 
 def context_from_benchmark(path, processed_dir):

@@ -85,10 +85,16 @@ RUN_CELLRANGER_FIRST_METRICS = [
 ]
 BARCODE_METRICS_RULES = {"barcode_metrics_peaks", "barcode_metrics_all"}
 BARCODE_METRICS_HIDDEN_METRICS = {"barcode_rows"}
+MATRIX_RULES = {"create_matrix_peaks", "create_matrix_bins", "create_genebody_and_promoter_matrix"}
+RULE_METRIC_LABELS = {
+    ("barcode_metrics_all", "read_count_sum"): "total read count",
+    ("barcode_metrics_peaks", "median_read_count"): "median read count in peaks",
+}
 METRIC_LABELS = {
     "passed_filters_sum": "pass QC fragments",
     "peak_region_fragments_sum": "fragments in peaks",
     "bigwig_bytes": "bigwig file size",
+    "features_tsv_lines": "features.tsv.gz lines",
     "median_read_count": "median read count",
     "possorted_bam_bytes": "bam file size",
     "read_count_sum": "total read count in peaks",
@@ -112,6 +118,12 @@ def human_label(value):
         return escape(RULE_LABELS[value])
     words = ["TSS" if word.lower() == "tss" else word for word in str(value).replace("_", " ").split(" ")]
     return escape(" ".join(words))
+
+
+def metric_label(key, rule=None):
+    if (rule, key) in RULE_METRIC_LABELS:
+        return escape(RULE_METRIC_LABELS[(rule, key)])
+    return human_label(key)
 
 
 def css_suffix(value):
@@ -252,6 +264,8 @@ def render_metric_value(key, value, values=None, rule=None):
     if rule == "remove_LA_duplicates" and key == "unique":
         return f'<span class="metric-tag good">{formatted}</span>'
     if rule in BARCODE_METRICS_RULES and key in {"read_count_sum", "median_read_count"}:
+        return f'<span class="metric-tag good">{formatted}</span>'
+    if rule in MATRIX_RULES and key == "features_tsv_lines":
         return f'<span class="metric-tag good">{formatted}</span>'
     if key in {"barcodes_reported", "bigwig_bytes", "possorted_bam_bytes"}:
         return f'<span class="metric-tag info">{formatted}</span>'
@@ -409,7 +423,7 @@ def render_key_values(values, class_name="kv", hidden_keys=None, first_keys=None
     for key in visible_keys:
         rows.append(
             "<tr>"
-            f"<th>{human_label(key)}</th>"
+            f"<th>{metric_label(key, rule=rule)}</th>"
             f"<td>{render_metric_value(key, values[key], values, rule=rule)}</td>"
             "</tr>"
         )
@@ -957,12 +971,12 @@ def build_html(report, rule_order):
       display: flex;
       flex-direction: column;
       gap: 6px;
-      justify-content: center;
     }}
     .histogram-area {{
       display: grid;
       gap: 6px;
       grid-template-columns: 34px minmax(0, 1fr);
+      margin-top: auto;
     }}
     .histogram-y-ticks {{
       color: var(--muted);
@@ -1001,6 +1015,7 @@ def build_html(report, rule_order):
       display: flex;
       font-size: 0.68rem;
       justify-content: space-between;
+      margin-bottom: auto;
       padding-left: 40px;
     }}
     .metric-tag {{

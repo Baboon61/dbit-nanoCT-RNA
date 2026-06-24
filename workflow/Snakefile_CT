@@ -641,8 +641,8 @@ rule spatial_barcodes_to_cells:
         }} > {log} 2>&1
         '''
 
+# Count fragments over MACS broad peaks with fragtk.
 rule create_matrix_peaks:
-    # Count fragments over MACS broad peaks with fragtk.
     input:
         frag  = ct_cellranger_out('{sample}', '{modality}', '{barcode}', 'fragments.tsv.gz'),
         peaks = ct_macs_broad_peak('{sample}', '{modality}', '{barcode}'),
