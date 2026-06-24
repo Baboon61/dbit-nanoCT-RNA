@@ -78,15 +78,20 @@ DEBARCODE_HIDDEN_METRICS = {
 RUN_CELLRANGER_HIDDEN_METRICS = {"cell_barcodes", "fragment_count_histogram", "fragments"}
 RUN_CELLRANGER_FIRST_METRICS = [
     "passed_filters_sum",
-    "peak_region_fragments_sum",
     "cellranger_peaks",
+    "peak_region_fragments_sum",
     "TSS_fragments_sum",
     "median_tss_enrichment_score",
 ]
+BARCODE_METRICS_RULES = {"barcode_metrics_peaks", "barcode_metrics_all"}
+BARCODE_METRICS_HIDDEN_METRICS = {"barcode_rows"}
 METRIC_LABELS = {
     "passed_filters_sum": "pass QC fragments",
     "peak_region_fragments_sum": "fragments in peaks",
+    "bigwig_bytes": "bigwig file size",
+    "median_read_count": "median read count",
     "possorted_bam_bytes": "bam file size",
+    "read_count_sum": "total read count in peaks",
     "TSS_fragments_sum": "fragments in TSS",
     "median_tss_enrichment_score": "median TSS enrichment score",
     "tss_enrichment_score": "median TSS enrichment score",
@@ -246,7 +251,9 @@ def render_metric_value(key, value, values=None, rule=None):
         return f'<span class="metric-tag warn">{formatted}</span>'
     if rule == "remove_LA_duplicates" and key == "unique":
         return f'<span class="metric-tag good">{formatted}</span>'
-    if key in {"barcodes_reported", "possorted_bam_bytes"}:
+    if rule in BARCODE_METRICS_RULES and key in {"read_count_sum", "median_read_count"}:
+        return f'<span class="metric-tag good">{formatted}</span>'
+    if key in {"barcodes_reported", "bigwig_bytes", "possorted_bam_bytes"}:
         return f'<span class="metric-tag info">{formatted}</span>'
     if key == "median_tss_enrichment_score":
         return f'<span class="metric-tag good">{formatted}</span>'
@@ -616,6 +623,8 @@ def render_entry(entry, processed_dir=None):
         hidden_metrics = DEBARCODE_HIDDEN_METRICS
     if entry.get("rule") == "run_cellranger":
         hidden_metrics = RUN_CELLRANGER_HIDDEN_METRICS
+    if entry.get("rule") in BARCODE_METRICS_RULES:
+        hidden_metrics = BARCODE_METRICS_HIDDEN_METRICS
     last_metrics = {"no_match"} if entry.get("rule") == "debarcode" else set()
     first_metrics = []
     if entry.get("rule") == "run_cellranger":
@@ -948,6 +957,7 @@ def build_html(report, rule_order):
       display: flex;
       flex-direction: column;
       gap: 6px;
+      justify-content: center;
     }}
     .histogram-area {{
       display: grid;

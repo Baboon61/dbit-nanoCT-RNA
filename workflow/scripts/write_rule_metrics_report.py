@@ -416,6 +416,7 @@ def fragment_count_histogram(rows, max_bins=24):
 
 def parse_barcode_counts(path):
     metrics = {"barcode_rows": 0, "read_count_sum": 0}
+    read_counts = []
     try:
         with open(path, "r") as handle:
             for line in handle:
@@ -424,11 +425,20 @@ def parse_barcode_counts(path):
                     continue
                 metrics["barcode_rows"] += 1
                 try:
-                    metrics["read_count_sum"] += int(fields[0])
+                    read_count = int(fields[0])
+                    metrics["read_count_sum"] += read_count
+                    read_counts.append(read_count)
                 except ValueError:
                     pass
     except OSError:
         return {}
+    if read_counts:
+        read_counts.sort()
+        middle = len(read_counts) // 2
+        if len(read_counts) % 2:
+            metrics["median_read_count"] = read_counts[middle]
+        else:
+            metrics["median_read_count"] = (read_counts[middle - 1] + read_counts[middle]) / 2
     return metrics
 
 
