@@ -322,53 +322,18 @@ processedData_dir/<sample>/
 
 ## Rule Metrics HTML Report
 
-The CT workflow writes a readable rule-level HTML report in:
+The CT and RNA workflows write readable rule-level HTML reports in:
 
 ```text
 processedData_dir/reports/rule_metrics_CT.html
+processedData_dir/reports/rule_metrics_RNA.html
 ```
 
-The report is generated from `processedData_dir/reports/rule_metrics_CT.json` and summarizes runtime, context tags, key metrics, and output files for each completed rule. It is meant as a quick quality-control view of the run, including primer/linker retention, debarcoding, Cell Ranger output metrics, LA/PCR duplicate handling, bigWig size, barcode metrics, and matrix sizes.
+The reports are generated from `processedData_dir/reports/rule_metrics_CT.json` and `processedData_dir/reports/rule_metrics_RNA.json`. They summarize runtime, context tags, key metrics, and output files for each completed rule. They are meant as quick quality-control views of the run, including primer/linker retention, barcode processing, Cell Ranger output metrics, and workflow-specific downstream outputs. The CT report additionally covers debarcoding, LA/PCR duplicate handling, bigWig size, barcode metrics, and CT matrix sizes.
 
 ![Rule metrics HTML report overview](assets/rule_metrics_html_overview.png)
 
 The top cards show the total number of rule entries and the raw reads at the start of the workflow. Each rule section groups entries by sample, modality, barcode, lane, and matrix context where applicable. Metric chips use consistent colors to highlight favorable values, warning values, file sizes, and selected summary counts.
-
-## Metric Definitions
-
-The rule metrics report mixes values produced directly by this workflow with values reported by Cell Ranger. The main CT metrics are:
-
-| Metric | Source | Definition |
-| --- | --- | --- |
-| `raw reads at start` | Primer-filter stats | Sum of the input reads entering `filter_primer`. |
-| `reads kept` | Primer/linker/debarcode stats | Reads written by the corresponding filtering or demultiplexing step. |
-| `reads kept percent vs previous` | Derived by `write_rule_metrics_report.py` | `reads kept / input reads` for the current step. |
-| `reads kept percent vs raw` | Derived by `write_rule_metrics_report.py` | `reads kept / raw reads at start`. |
-| `reads selected` | Debarcode stats | Reads assigned to the selected antibody/modality barcode. |
-| `no match` | Debarcode stats | Reads not assigned to a selected barcode after barcode/no-spacer/too-short categories are collapsed for display. |
-| `pass QC fragments` | Cell Ranger `singlecell.csv` | Sum of `passed_filters` across reported barcode rows, excluding `NO_BARCODE`. |
-| `cellranger peaks` | Cell Ranger `peaks.bed` | Number of non-empty, non-comment BED records in `cellranger/outs/peaks.bed`. |
-| `fragments in peaks` | Cell Ranger `singlecell.csv` | Sum of `peak_region_fragments` across reported barcode rows, excluding `NO_BARCODE`. |
-| `fragments in TSS` | Cell Ranger `singlecell.csv` | Sum of `TSS_fragments` across reported barcode rows, excluding `NO_BARCODE`. |
-| `median TSS enrichment score` | Cell Ranger `summary.csv` or `metrics_summary.csv` | Median TSS enrichment value reported by Cell Ranger, with fallback to the generic TSS enrichment field if the median-specific field is absent. |
-| `barcodes reported` | Cell Ranger `singlecell.csv` | Number of rows in `singlecell.csv` after excluding `NO_BARCODE`. |
-| `bam file size` | Cell Ranger BAM output | File size of `cellranger/outs/possorted_bam.bam`. |
-| `not mapped` | `remove_LA_duplicates.py` | Read pairs skipped because at least one mate is unmapped. |
-| `not proper` | `remove_LA_duplicates.py` | Read pairs skipped because at least one mate is not marked as a proper pair. |
-| `unique` | `remove_LA_duplicates.py` | First observed read-pair position for a given cell barcode. |
-| `LA duplicates` | `remove_LA_duplicates.py` | Same read 1 position and cell barcode, but a different mate position; these pairs are removed from the no-LA BAM. |
-| `PCR duplicates` | `remove_LA_duplicates.py` | Same read 1 position, mate position, and cell barcode as a previously observed pair; these pairs are retained in the no-LA BAM. |
-| `noLA fragments` | `fragments_noLA_duplicates.tsv.gz` | Sum of the last column in the no-LA fragments file generated after LA duplicate removal. |
-| `bigwig file size` | BigWig output | File size of `bigwig/all_reads.bw`. |
-| `total read count in peaks` | `barcode_metrics/peaks_barcodes.txt` | Sum of the read-count column for barcode counts from reads overlapping peaks. |
-| `median read count in peaks` | `barcode_metrics/peaks_barcodes.txt` | Median of the read-count column for barcode counts from reads overlapping peaks. |
-| `total read count` | `barcode_metrics/all_barcodes.txt` | Sum of the read-count column for all barcode counts. |
-| `median read count` | `barcode_metrics/all_barcodes.txt` | Median of the read-count column for all barcode counts. |
-| `number of peaks` | Matrix `features.tsv.gz` | Number of lines in `matrix/matrix_peaks/features.tsv.gz`. |
-| `number of bins` | Matrix `features.tsv.gz` | Number of lines in each `matrix/matrix_bin_<binsize>/features.tsv.gz`. |
-| `number of genes` | Matrix `features.tsv.gz` | Number of lines in `matrix/matrix_genes/features.tsv.gz`. |
-
-The `PCR duplicates` and `LA duplicates` metrics are workflow-specific coordinate categories from `remove_LA_duplicates.py`; they are not expected to exactly match Cell Ranger duplicate counts from `singlecell.csv`.
 
 ## Safeguards And Validation
 

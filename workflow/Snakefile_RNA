@@ -64,6 +64,9 @@ rule all:
     ],
     rule_metrics_report=[
       global_done('rule_metrics_report')
+    ],
+    rule_metrics_html=[
+      global_done('rule_metrics_html')
     ]
 
 include: 'Snakefile_spatial_demux.smk'
@@ -204,4 +207,35 @@ rule rule_metrics_report:
   shell:
     '''
     python3 {params.script} --config {params.config_file} --workflow RNA --output {output.report} > {log} 2>&1
+    '''
+
+# Render the rule metrics JSON as a readable HTML report ordered by RNA rule order.
+rule rule_metrics_html:
+  input:
+    report = global_report('rule_metrics_RNA.json'),
+    rule_metrics_done = global_done('rule_metrics_report')
+  output:
+    report = global_report('rule_metrics_RNA.html'),
+    outfile = touch(global_done('rule_metrics_html'))
+  log:
+    global_log('rule_metrics_html')
+  benchmark:
+    global_benchmark('rule_metrics_html')
+  params:
+    script = workflow.basedir + '/scripts/write_rule_metrics_html.py',
+    rule_order = [
+      'filter_primer',
+      'filter_L1',
+      'filter_L2',
+      'bc_process',
+      'seq_file_rename',
+      'get_barcodes_cellranger',
+      'run_cellranger',
+      'restore_cellranger_barcodes',
+      'pipeline_summary',
+      'rule_metrics_report',
+    ]
+  shell:
+    '''
+    python3 {params.script} --input {input.report} --output {output.report} --rule-order {params.rule_order} > {log} 2>&1
     '''

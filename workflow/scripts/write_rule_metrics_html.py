@@ -108,7 +108,9 @@ METRIC_LABELS = {
     "bigwig_bytes": "bigwig file size",
     "features_tsv_lines": "features.tsv.gz lines",
     "median_read_count": "median read count",
+    "molecule_info_h5_bytes": "molecule info file size",
     "possorted_bam_bytes": "bam file size",
+    "possorted_genome_bam_bytes": "bam file size",
     "read_count_sum": "total read count in peaks",
     "TSS_fragments_sum": "fragments in TSS",
     "median_tss_enrichment_score": "median TSS enrichment score",
@@ -126,6 +128,9 @@ METRIC_DESCRIPTIONS = {
     "cellranger_peaks": "Number of non-empty, non-comment records in Cell Ranger outs/peaks.bed.",
     "file_count": "Number of files found in this output directory.",
     "fragments": "Line count of Cell Ranger outs/fragments.tsv.gz.",
+    "filtered_feature_bc_matrix_barcodes": "Number of lines in Cell Ranger outs/filtered_feature_bc_matrix/barcodes.tsv.gz.",
+    "filtered_feature_bc_matrix_features": "Number of lines in Cell Ranger outs/filtered_feature_bc_matrix/features.tsv.gz.",
+    "filtered_feature_bc_matrix_matrix_lines": "Number of lines in Cell Ranger outs/filtered_feature_bc_matrix/matrix.mtx.gz.",
     "fragment_count_histogram": "Histogram data used to draw the fragments-per-cell graph.",
     "input_reads": "Reads entering this rule or filtering step.",
     "LA duplicates": "Read pairs with the same read 1 position and cell barcode but a different mate position; these are removed from the no-LA BAM.",
@@ -144,6 +149,9 @@ METRIC_DESCRIPTIONS = {
     "possorted_bam_bytes": "File size of Cell Ranger outs/possorted_bam.bam.",
     "possorted_genome_bam_bytes": "File size of Cell Ranger outs/possorted_genome_bam.bam.",
     "raw_reads_start": "Raw reads entering the first primer-filtering step.",
+    "raw_feature_bc_matrix_barcodes": "Number of lines in Cell Ranger outs/raw_feature_bc_matrix/barcodes.tsv.gz.",
+    "raw_feature_bc_matrix_features": "Number of lines in Cell Ranger outs/raw_feature_bc_matrix/features.tsv.gz.",
+    "raw_feature_bc_matrix_matrix_lines": "Number of lines in Cell Ranger outs/raw_feature_bc_matrix/matrix.mtx.gz.",
     "read_count_sum": "Sum of the read-count column in the barcode metrics file.",
     "reads_discarded": "Reads removed by the current processing step.",
     "reads_discarded_percent_vs_previous": "Discarded reads divided by input reads for this step.",
@@ -340,7 +348,7 @@ def render_metric_value(key, value, values=None, rule=None):
         return f'<span class="metric-tag good">{formatted}</span>'
     if rule in MATRIX_RULES and key == "features_tsv_lines":
         return f'<span class="metric-tag good">{formatted}</span>'
-    if key in {"barcodes_reported", "bigwig_bytes", "possorted_bam_bytes"}:
+    if key in {"barcodes_reported", "bigwig_bytes", "molecule_info_h5_bytes", "possorted_bam_bytes", "possorted_genome_bam_bytes"}:
         return f'<span class="metric-tag info">{formatted}</span>'
     if key == "median_tss_enrichment_score":
         return f'<span class="metric-tag good">{formatted}</span>'
