@@ -65,6 +65,25 @@ def count_bed_records(path):
         return None
 
 
+def sum_last_column(path):
+    total = 0
+    found = False
+    try:
+        with open_text(path) as handle:
+            for line in handle:
+                fields = line.strip().split()
+                if not fields:
+                    continue
+                try:
+                    total += int(float(fields[-1]))
+                    found = True
+                except ValueError:
+                    continue
+    except OSError:
+        return None
+    return total if found else None
+
+
 def file_size(path):
     try:
         return os.path.getsize(path)
@@ -639,7 +658,7 @@ def collect_ct_output_metrics(processed_dir, workflow):
 
         no_la_fragments = modality_dir / "cellranger" / "outs" / "fragments_noLA_duplicates.tsv.gz"
         if no_la_fragments.exists():
-            attach_or_add(entries, "sort_sinto_output", context, workflow, {"noLA_fragments": count_lines(no_la_fragments)}, [str(no_la_fragments)])
+            attach_or_add(entries, "sort_sinto_output", context, workflow, {"noLA_fragments": sum_last_column(no_la_fragments)}, [str(no_la_fragments)])
 
         broad_peak = modality_dir / "peaks" / "macs_broad"
         for peak_file in broad_peak.glob("*_peaks.broadPeak"):

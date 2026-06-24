@@ -76,8 +76,15 @@ DEBARCODE_HIDDEN_METRICS = {
     "too_short_read",
 }
 RUN_CELLRANGER_HIDDEN_METRICS = {"cell_barcodes", "fragment_count_histogram", "fragments"}
+RUN_CELLRANGER_FIRST_METRICS = [
+    "passed_filters_sum",
+    "peak_region_fragments_sum",
+    "cellranger_peaks",
+    "TSS_fragments_sum",
+    "median_tss_enrichment_score",
+]
 METRIC_LABELS = {
-    "passed_filters_sum": "cellranger fragments",
+    "passed_filters_sum": "pass QC fragments",
     "peak_region_fragments_sum": "fragments in peaks",
     "possorted_bam_bytes": "bam file size",
     "TSS_fragments_sum": "fragments in TSS",
@@ -233,10 +240,16 @@ def debarcode_selection_color(value):
     return "#{:02x}{:02x}{:02x}".format(*color)
 
 
-def render_metric_value(key, value, values=None):
+def render_metric_value(key, value, values=None, rule=None):
     formatted = format_metric(key, value)
+    if rule == "remove_LA_duplicates" and key in {"not mapped", "not proper"}:
+        return f'<span class="metric-tag warn">{formatted}</span>'
+    if rule == "remove_LA_duplicates" and key == "unique":
+        return f'<span class="metric-tag good">{formatted}</span>'
     if key in {"barcodes_reported", "possorted_bam_bytes"}:
         return f'<span class="metric-tag info">{formatted}</span>'
+    if key == "median_tss_enrichment_score":
+        return f'<span class="metric-tag good">{formatted}</span>'
     if key == "no_match":
         return f'<span class="metric-tag warn">{formatted}</span>'
     if key == "reads_kept_percent_vs_previous":
@@ -372,10 +385,16 @@ def merge_entries(entries):
     return sorted(merged, key=lambda item: (item["rule"], context_key(item["context"])))
 
 
-def render_key_values(values, class_name="kv", hidden_keys=None, last_keys=None):
+def render_key_values(values, class_name="kv", hidden_keys=None, first_keys=None, last_keys=None, rule=None):
     hidden_keys = hidden_keys or set()
+    first_keys = first_keys or []
     last_keys = last_keys or set()
-    visible_keys = [key for key in sorted(values) if key not in hidden_keys and key not in last_keys]
+    first_keys = [key for key in first_keys if key in values and key not in hidden_keys]
+    visible_keys = [
+        key for key in sorted(values)
+        if key not in hidden_keys and key not in first_keys and key not in last_keys
+    ]
+    visible_keys = first_keys + visible_keys
     visible_keys.extend(key for key in sorted(last_keys) if key in values and key not in hidden_keys)
     if not visible_keys:
         return '<span class="muted">none</span>'
@@ -384,7 +403,7 @@ def render_key_values(values, class_name="kv", hidden_keys=None, last_keys=None)
         rows.append(
             "<tr>"
             f"<th>{human_label(key)}</th>"
-            f"<td>{render_metric_value(key, values[key], values)}</td>"
+            f"<td>{render_metric_value(key, values[key], values, rule=rule)}</td>"
             "</tr>"
         )
     return f'<table class="{class_name}"><tbody>' + "".join(rows) + "</tbody></table>"
@@ -598,9 +617,17 @@ def render_entry(entry, processed_dir=None):
     if entry.get("rule") == "run_cellranger":
         hidden_metrics = RUN_CELLRANGER_HIDDEN_METRICS
     last_metrics = {"no_match"} if entry.get("rule") == "debarcode" else set()
+    first_metrics = []
     if entry.get("rule") == "run_cellranger":
+        first_metrics = RUN_CELLRANGER_FIRST_METRICS
         last_metrics = {"barcodes_reported", "possorted_bam_bytes"}
-    metrics = render_key_values(entry.get("metrics") or {}, hidden_keys=hidden_metrics, last_keys=last_metrics)
+    metrics = render_key_values(
+        entry.get("metrics") or {},
+        hidden_keys=hidden_metrics,
+        first_keys=first_metrics,
+        last_keys=last_metrics,
+        rule=entry.get("rule"),
+    )
     graph = render_fragment_histogram(entry)
     outputs = render_outputs(entry.get("outputs") or [], processed_dir=processed_dir)
     return f"""
@@ -651,13 +678,14 @@ def total_raw_reads(entries):
 
 
 def build_html(report, rule_order):
-    entries = [entry for entry in merge_entries(report.get("rules") or []) if entry.get("rule") not in HIDDEN_RULES]
+    all_entries = merge_entries(report.get("rules") or [])
+    entries = [entry for entry in all_entries if entry.get("rule") not in HIDDEN_RULES]
     order_index = {rule: index for index, rule in enumerate(rule_order)}
     groups = defaultdict(list)
     for entry in entries:
         groups[entry.get("rule", "unknown")].append(entry)
 
-    raw_reads = total_raw_reads(entries)
+    raw_reads = total_raw_reads(all_entries)
     raw_reads_label = f"{raw_reads:,}" if raw_reads is not None else "n/a"
     workflow = report.get("workflow", "workflow")
     processed_dir = report.get("processedData_dir", "")
@@ -1020,7 +1048,7 @@ def build_html(report, rule_order):
   </header>
   <main>
     <section class="summary">
-      <div class="stat"><b>{len(entries):,}</b><span>rule entries</span></div>
+      <div class="stat"><b>{len(all_entries):,}</b><span>rule entries</span></div>
       <div class="stat"><b>{raw_reads_label}</b><span>raw reads at start</span></div>
     </section>
     {''.join(sections)}
