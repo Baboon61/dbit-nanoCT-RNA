@@ -93,6 +93,15 @@ RULE_METRIC_LABELS = {
     ("create_matrix_bins", "features_tsv_lines"): "number of bins",
     ("create_matrix_peaks", "features_tsv_lines"): "number of peaks",
 }
+RULE_METRIC_DESCRIPTIONS = {
+    ("barcode_metrics_all", "median_read_count"): "Median of the read-count column in barcode_metrics/all_barcodes.txt.",
+    ("barcode_metrics_all", "read_count_sum"): "Sum of the read-count column in barcode_metrics/all_barcodes.txt.",
+    ("barcode_metrics_peaks", "median_read_count"): "Median of the read-count column in barcode_metrics/peaks_barcodes.txt for reads overlapping peaks.",
+    ("barcode_metrics_peaks", "read_count_sum"): "Sum of the read-count column in barcode_metrics/peaks_barcodes.txt for reads overlapping peaks.",
+    ("create_genebody_and_promoter_matrix", "features_tsv_lines"): "Number of feature rows in matrix/matrix_genes/features.tsv.gz.",
+    ("create_matrix_bins", "features_tsv_lines"): "Number of feature rows in each matrix/matrix_bin_<binsize>/features.tsv.gz file.",
+    ("create_matrix_peaks", "features_tsv_lines"): "Number of feature rows in matrix/matrix_peaks/features.tsv.gz.",
+}
 METRIC_LABELS = {
     "passed_filters_sum": "pass QC fragments",
     "peak_region_fragments_sum": "fragments in peaks",
@@ -107,6 +116,49 @@ METRIC_LABELS = {
 }
 RULE_LABELS = {
     "bc_process": "BC process",
+}
+METRIC_DESCRIPTIONS = {
+    "1_percent": "Percentage value reported by the upstream filtering statistics file.",
+    "1_reads": "Read count reported by the upstream filtering statistics file.",
+    "barcodes_reported": "Number of rows in Cell Ranger singlecell.csv after excluding the NO_BARCODE row.",
+    "bigwig_bytes": "File size of the generated bigWig file.",
+    "cell_barcodes": "Number of Cell Ranger singlecell.csv rows flagged as cell barcodes.",
+    "cellranger_peaks": "Number of non-empty, non-comment records in Cell Ranger outs/peaks.bed.",
+    "file_count": "Number of files found in this output directory.",
+    "fragments": "Line count of Cell Ranger outs/fragments.tsv.gz.",
+    "fragment_count_histogram": "Histogram data used to draw the fragments-per-cell graph.",
+    "input_reads": "Reads entering this rule or filtering step.",
+    "LA duplicates": "Read pairs with the same read 1 position and cell barcode but a different mate position; these are removed from the no-LA BAM.",
+    "macs_broad_peaks": "Number of non-empty, non-comment records in the MACS broadPeak output.",
+    "matrix_non_comment_lines": "Number of non-comment records in the matrix file.",
+    "median_read_count": "Median of the read-count column in the barcode metrics file.",
+    "median_tss_enrichment_score": "Median TSS enrichment score reported by Cell Ranger summary.csv or metrics_summary.csv.",
+    "molecule_info_h5_bytes": "File size of Cell Ranger molecule_info.h5.",
+    "noLA_fragments": "Sum of the last column in fragments_noLA_duplicates.tsv.gz after LA duplicate removal.",
+    "no_match": "Debarcoding reads not assigned to the selected barcode after no-barcode, no-spacer, and too-short categories are collapsed for display.",
+    "not mapped": "Read pairs skipped during LA duplicate removal because at least one mate is unmapped.",
+    "not proper": "Read pairs skipped during LA duplicate removal because at least one mate is not marked as a proper pair.",
+    "passed_filters_sum": "Sum of Cell Ranger singlecell.csv passed_filters across reported barcode rows, excluding NO_BARCODE.",
+    "PCR duplicates": "Read pairs with the same read 1 position, mate position, and cell barcode as a previously observed pair; these are retained in the no-LA BAM.",
+    "peak_region_fragments_sum": "Sum of Cell Ranger singlecell.csv peak_region_fragments across reported barcode rows, excluding NO_BARCODE.",
+    "possorted_bam_bytes": "File size of Cell Ranger outs/possorted_bam.bam.",
+    "possorted_genome_bam_bytes": "File size of Cell Ranger outs/possorted_genome_bam.bam.",
+    "raw_reads_start": "Raw reads entering the first primer-filtering step.",
+    "read_count_sum": "Sum of the read-count column in the barcode metrics file.",
+    "reads_discarded": "Reads removed by the current processing step.",
+    "reads_discarded_percent_vs_previous": "Discarded reads divided by input reads for this step.",
+    "reads_kept": "Reads written by the current filtering or processing step.",
+    "reads_kept_percent_vs_previous": "Reads kept divided by input reads for this step.",
+    "reads_kept_percent_vs_raw": "Reads kept divided by raw reads at the start of the workflow.",
+    "reads_processed": "Reads processed by the barcode-processing script.",
+    "reads_selected": "Reads assigned to the selected antibody/modality barcode during debarcoding.",
+    "reads_selected_percent_vs_bc_process": "Selected reads divided by the reads written by BC process for the same sample.",
+    "reads_written": "Reads written by the barcode-processing script.",
+    "total_bytes": "Total file size across files in this output directory.",
+    "TSS_fragments_sum": "Sum of Cell Ranger singlecell.csv TSS_fragments across reported barcode rows, excluding NO_BARCODE.",
+    "tss_enrichment": "TSS enrichment value reported by Cell Ranger.",
+    "tss_enrichment_score": "TSS enrichment score reported by Cell Ranger; displayed as median TSS enrichment score when no median-specific field exists.",
+    "unique": "First observed read-pair position for a cell barcode during LA duplicate removal.",
 }
 
 
@@ -127,6 +179,24 @@ def metric_label(key, rule=None):
     if (rule, key) in RULE_METRIC_LABELS:
         return escape(RULE_METRIC_LABELS[(rule, key)])
     return human_label(key)
+
+
+def metric_description(key, rule=None):
+    if (rule, key) in RULE_METRIC_DESCRIPTIONS:
+        return RULE_METRIC_DESCRIPTIONS[(rule, key)]
+    if key in METRIC_DESCRIPTIONS:
+        return METRIC_DESCRIPTIONS[key]
+    return f"Metric generated by {human_label(rule) if rule else 'this rule'} from key '{key}'."
+
+
+def render_metric_header(key, rule=None):
+    description = escape(metric_description(key, rule=rule))
+    return (
+        '<span class="metric-label">'
+        f'<span>{metric_label(key, rule=rule)}</span>'
+        f'<span class="metric-help" tabindex="0" title="{description}" data-tooltip="{description}" aria-label="{description}">!</span>'
+        '</span>'
+    )
 
 
 def css_suffix(value):
@@ -426,7 +496,7 @@ def render_key_values(values, class_name="kv", hidden_keys=None, first_keys=None
     for key in visible_keys:
         rows.append(
             "<tr>"
-            f"<th>{metric_label(key, rule=rule)}</th>"
+            f"<th>{render_metric_header(key, rule=rule)}</th>"
             f"<td>{render_metric_value(key, values[key], values, rule=rule)}</td>"
             "</tr>"
         )
@@ -958,6 +1028,49 @@ def build_html(report, rule_order):
       padding-right: 12px;
       text-align: left;
       width: 52%;
+    }}
+    .metric-label {{
+      align-items: center;
+      display: inline-flex;
+      gap: 5px;
+    }}
+    .metric-help {{
+      align-items: center;
+      background: #e8edf3;
+      border-radius: 50%;
+      color: #354052;
+      cursor: help;
+      display: inline-flex;
+      font-size: 0.62rem;
+      font-weight: 800;
+      height: 14px;
+      justify-content: center;
+      line-height: 1;
+      position: relative;
+      width: 14px;
+    }}
+    .metric-help:hover::after,
+    .metric-help:focus::after {{
+      background: #18202a;
+      border-radius: 4px;
+      bottom: calc(100% + 6px);
+      color: #ffffff;
+      content: attr(data-tooltip);
+      font-size: 0.72rem;
+      font-weight: 500;
+      left: 50%;
+      line-height: 1.3;
+      max-width: min(320px, 70vw);
+      min-width: 220px;
+      padding: 7px 8px;
+      position: absolute;
+      transform: translateX(-50%);
+      white-space: normal;
+      z-index: 5;
+    }}
+    .metric-help:focus {{
+      outline: 2px solid #9fc0ee;
+      outline-offset: 2px;
     }}
     td {{
       font-variant-numeric: tabular-nums;
