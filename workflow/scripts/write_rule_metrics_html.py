@@ -89,6 +89,9 @@ MATRIX_RULES = {"create_matrix_peaks", "create_matrix_bins", "create_genebody_an
 RULE_METRIC_LABELS = {
     ("barcode_metrics_all", "read_count_sum"): "total read count",
     ("barcode_metrics_peaks", "median_read_count"): "median read count in peaks",
+    ("create_genebody_and_promoter_matrix", "features_tsv_lines"): "number of genes",
+    ("create_matrix_bins", "features_tsv_lines"): "number of bins",
+    ("create_matrix_peaks", "features_tsv_lines"): "number of peaks",
 }
 METRIC_LABELS = {
     "passed_filters_sum": "pass QC fragments",
