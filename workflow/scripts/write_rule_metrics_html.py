@@ -509,14 +509,14 @@ def merge_entries(entries):
 def render_key_values(values, class_name="kv", hidden_keys=None, first_keys=None, last_keys=None, rule=None, workflow=None):
     hidden_keys = hidden_keys or set()
     first_keys = first_keys or []
-    last_keys = last_keys or set()
+    last_keys = list(last_keys or [])
     first_keys = [key for key in first_keys if key in values and key not in hidden_keys]
     visible_keys = [
         key for key in sorted(values)
         if key not in hidden_keys and key not in first_keys and key not in last_keys
     ]
     visible_keys = first_keys + visible_keys
-    visible_keys.extend(key for key in sorted(last_keys) if key in values and key not in hidden_keys)
+    visible_keys.extend(key for key in last_keys if key in values and key not in hidden_keys)
     if not visible_keys:
         return '<span class="muted">none</span>'
     rows = []
@@ -741,11 +741,13 @@ def render_entry(entry, processed_dir=None, workflow=None):
             hidden_metrics = hidden_metrics | RNA_RUN_CELLRANGER_HIDDEN_METRICS
     if entry.get("rule") in BARCODE_METRICS_RULES:
         hidden_metrics = BARCODE_METRICS_HIDDEN_METRICS
-    last_metrics = {"no_match"} if entry.get("rule") == "debarcode" else set()
+    last_metrics = ["no_match"] if entry.get("rule") == "debarcode" else []
     first_metrics = []
     if entry.get("rule") == "run_cellranger":
         first_metrics = RUN_CELLRANGER_FIRST_METRICS
-        last_metrics = {"barcodes_reported", "possorted_bam_bytes"}
+        last_metrics = ["barcodes_reported", "possorted_bam_bytes"]
+        if workflow == "RNA":
+            last_metrics = ["raw_feature_bc_matrix_barcodes", "possorted_genome_bam_bytes"]
     metrics = render_key_values(
         entry.get("metrics") or {},
         hidden_keys=hidden_metrics,
