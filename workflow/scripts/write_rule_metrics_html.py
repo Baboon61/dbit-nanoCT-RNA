@@ -83,6 +83,18 @@ RUN_CELLRANGER_FIRST_METRICS = [
     "TSS_fragments_sum",
     "median_tss_enrichment_score",
 ]
+RNA_RUN_CELLRANGER_HIDDEN_METRICS = {
+    "estimated_number_of_cells",
+    "features_tsv_lines",
+    "filtered_feature_bc_matrix_barcodes",
+    "filtered_feature_bc_matrix_features",
+    "filtered_feature_bc_matrix_matrix_lines",
+    "fraction_reads_in_cells",
+    "molecule_info_h5_bytes",
+    "number_of_reads",
+    "raw_feature_bc_matrix_features",
+    "raw_feature_bc_matrix_matrix_lines",
+}
 BARCODE_METRICS_RULES = {"barcode_metrics_peaks", "barcode_metrics_all"}
 BARCODE_METRICS_HIDDEN_METRICS = {"barcode_rows"}
 MATRIX_RULES = {"create_matrix_peaks", "create_matrix_bins", "create_genebody_and_promoter_matrix"}
@@ -92,6 +104,7 @@ RULE_METRIC_LABELS = {
     ("create_genebody_and_promoter_matrix", "features_tsv_lines"): "number of genes",
     ("create_matrix_bins", "features_tsv_lines"): "number of bins",
     ("create_matrix_peaks", "features_tsv_lines"): "number of peaks",
+    ("run_cellranger", "raw_feature_bc_matrix_barcodes"): "barcodes reported",
 }
 RULE_METRIC_DESCRIPTIONS = {
     ("barcode_metrics_all", "median_read_count"): "Median of the read-count column in barcode_metrics/all_barcodes.txt.",
@@ -131,6 +144,7 @@ METRIC_DESCRIPTIONS = {
     "filtered_feature_bc_matrix_barcodes": "Number of lines in Cell Ranger outs/filtered_feature_bc_matrix/barcodes.tsv.gz.",
     "filtered_feature_bc_matrix_features": "Number of lines in Cell Ranger outs/filtered_feature_bc_matrix/features.tsv.gz.",
     "filtered_feature_bc_matrix_matrix_lines": "Number of lines in Cell Ranger outs/filtered_feature_bc_matrix/matrix.mtx.gz.",
+    "fraction_reads_in_cells": "Fraction of reads assigned to Cell Ranger cell-associated barcodes.",
     "fragment_count_histogram": "Histogram data used to draw the fragments-per-cell graph.",
     "input_reads": "Reads entering this rule or filtering step.",
     "LA duplicates": "Read pairs with the same read 1 position and cell barcode but a different mate position; these are removed from the no-LA BAM.",
@@ -139,6 +153,7 @@ METRIC_DESCRIPTIONS = {
     "median_read_count": "Median of the read-count column in the barcode metrics file.",
     "median_tss_enrichment_score": "Median TSS enrichment score reported by Cell Ranger summary.csv or metrics_summary.csv.",
     "molecule_info_h5_bytes": "File size of Cell Ranger molecule_info.h5.",
+    "number_of_reads": "Number of reads reported by Cell Ranger.",
     "noLA_fragments": "Sum of the last column in fragments_noLA_duplicates.tsv.gz after LA duplicate removal.",
     "no_match": "Debarcoding reads not assigned to the selected barcode after no-barcode, no-spacer, and too-short categories are collapsed for display.",
     "not mapped": "Read pairs skipped during LA duplicate removal because at least one mate is unmapped.",
@@ -338,7 +353,7 @@ def debarcode_selection_color(value):
     return "#{:02x}{:02x}{:02x}".format(*color)
 
 
-def render_metric_value(key, value, values=None, rule=None):
+def render_metric_value(key, value, values=None, rule=None, workflow=None):
     formatted = format_metric(key, value)
     if rule == "remove_LA_duplicates" and key in {"not mapped", "not proper"}:
         return f'<span class="metric-tag warn">{formatted}</span>'
@@ -349,6 +364,8 @@ def render_metric_value(key, value, values=None, rule=None):
     if rule in MATRIX_RULES and key == "features_tsv_lines":
         return f'<span class="metric-tag good">{formatted}</span>'
     if key in {"barcodes_reported", "bigwig_bytes", "molecule_info_h5_bytes", "possorted_bam_bytes", "possorted_genome_bam_bytes"}:
+        return f'<span class="metric-tag info">{formatted}</span>'
+    if workflow == "RNA" and rule == "run_cellranger" and key == "raw_feature_bc_matrix_barcodes":
         return f'<span class="metric-tag info">{formatted}</span>'
     if key == "median_tss_enrichment_score":
         return f'<span class="metric-tag good">{formatted}</span>'
@@ -370,6 +387,8 @@ def render_metric_value(key, value, values=None, rule=None):
         color = debarcode_selection_color(values.get("reads_selected_percent_vs_bc_process"))
         if color:
             return f'<span class="metric-tag" style="background-color: {color}; color: #18202a;">{formatted}</span>'
+    if workflow == "RNA" and rule == "run_cellranger":
+        return f'<span class="metric-tag good">{formatted}</span>'
     status = metric_status(key, value)
     if not status:
         return formatted
@@ -487,7 +506,7 @@ def merge_entries(entries):
     return sorted(merged, key=lambda item: (item["rule"], context_key(item["context"])))
 
 
-def render_key_values(values, class_name="kv", hidden_keys=None, first_keys=None, last_keys=None, rule=None):
+def render_key_values(values, class_name="kv", hidden_keys=None, first_keys=None, last_keys=None, rule=None, workflow=None):
     hidden_keys = hidden_keys or set()
     first_keys = first_keys or []
     last_keys = last_keys or set()
@@ -505,7 +524,7 @@ def render_key_values(values, class_name="kv", hidden_keys=None, first_keys=None
         rows.append(
             "<tr>"
             f"<th>{render_metric_header(key, rule=rule)}</th>"
-            f"<td>{render_metric_value(key, values[key], values, rule=rule)}</td>"
+            f"<td>{render_metric_value(key, values[key], values, rule=rule, workflow=workflow)}</td>"
             "</tr>"
         )
     return f'<table class="{class_name}"><tbody>' + "".join(rows) + "</tbody></table>"
@@ -705,7 +724,7 @@ def render_fragment_histogram(entry):
     )
 
 
-def render_entry(entry, processed_dir=None):
+def render_entry(entry, processed_dir=None, workflow=None):
     add_tss_enrichment_metric(entry, processed_dir=processed_dir)
     target = entry.get("target_label") or entry.get("rule")
     context = render_context_tags(entry)
@@ -718,6 +737,8 @@ def render_entry(entry, processed_dir=None):
         hidden_metrics = DEBARCODE_HIDDEN_METRICS
     if entry.get("rule") == "run_cellranger":
         hidden_metrics = RUN_CELLRANGER_HIDDEN_METRICS
+        if workflow == "RNA":
+            hidden_metrics = hidden_metrics | RNA_RUN_CELLRANGER_HIDDEN_METRICS
     if entry.get("rule") in BARCODE_METRICS_RULES:
         hidden_metrics = BARCODE_METRICS_HIDDEN_METRICS
     last_metrics = {"no_match"} if entry.get("rule") == "debarcode" else set()
@@ -731,6 +752,7 @@ def render_entry(entry, processed_dir=None):
         first_keys=first_metrics,
         last_keys=last_metrics,
         rule=entry.get("rule"),
+        workflow=workflow,
     )
     graph = render_fragment_histogram(entry)
     outputs = render_outputs(entry.get("outputs") or [], processed_dir=processed_dir)
@@ -804,7 +826,7 @@ def build_html(report, rule_order):
                 <h2>{human_label(rule)}</h2>
                 <span>{len(rule_entries):,} entr{"y" if len(rule_entries) == 1 else "ies"}</span>
               </div>
-              {''.join(render_entry(entry, processed_dir=processed_dir) for entry in rule_entries)}
+              {''.join(render_entry(entry, processed_dir=processed_dir, workflow=workflow) for entry in rule_entries)}
             </section>
             """
         )
