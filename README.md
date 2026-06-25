@@ -335,6 +335,8 @@ The reports are generated from `processedData_dir/reports/rule_metrics_CT.json` 
 
 The top cards show the total number of rule entries and the raw reads at the start of the workflow. Each rule section groups entries by sample, modality, barcode, lane, and matrix context where applicable. Metric chips use consistent colors to highlight favorable values, warning values, file sizes, and selected summary counts.
 
+Each metric label includes a small `!` marker. Hover over the marker to see how that metric is calculated and which file it comes from. The same HTML renderer is used for CT and RNA, but it hides workflow-specific intermediate metrics so the report stays focused on interpretable QC values.
+
 ## Safeguards And Validation
 
 The workflow fails during DAG creation or immediately after rules when common problems are detected:
