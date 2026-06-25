@@ -7,7 +7,7 @@ This repository contains two related pipelines:
 - `workflow/Snakefile_CT`: spatial nanoCUT&Tag / Cut&Tag processing.
 - `workflow/Snakefile_RNA`: spatial RNA processing.
 
-Both workflows share the same early spatial demultiplexing logic, Cell Ranger barcode whitelist handling, path helpers, validation checks, logging, and completion gatekeepers.
+Both workflows share the same spatial demultiplexing logic, Cell Ranger barcode whitelist handling, path helpers, validation checks, logging, and completion gatekeepers.
 
 ## Acknowledgements
 
